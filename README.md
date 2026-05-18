@@ -1,3 +1,18 @@
+# Crazytel Web Calling (frontend)
+
+## Environment (single `.env` file)
+
+Copy keys from `src/config/constants.ts` (`ENV_KEYS`) into **`.env`** at this folder root (gitignored). Vite reads them at build/dev time; app code uses `src/config/env.ts` only (not `import.meta.env` in components).
+
+Required keys: `VITE_API_BASE_URL`, `VITE_SIP_WSS_URL`, `VITE_SIP_DOMAIN`, `VITE_SIP_USERNAME`, `VITE_SIP_PASSWORD`, `VITE_TURN_URL` (optional: `VITE_TURN_USERNAME`, `VITE_TURN_PASSWORD`, `VITE_VERIFIED_OUTBOUND_NUMBERS`).
+
+```bash
+npm install
+npm run dev
+```
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
