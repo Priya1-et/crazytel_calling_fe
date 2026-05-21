@@ -22,12 +22,8 @@ export const ENV_DEFAULTS = {
   TURN_PASSWORD: '',
 } as const;
 
-/** Default Crazytel-verified CLI block when VITE_VERIFIED_OUTBOUND_NUMBERS is unset. */
-export const OUTGOING_NUMBER_BLOCK = {
-  prefix: '02901784',
-  suffixLength: 2,
-  count: 100,
-} as const;
+/** Default Crazytel-verified CLI/DID (E.164 without +). */
+export const DEFAULT_VERIFIED_CLI = '61272643281' as const;
 
 export const SIP_HEADER_OUTGOING_NUMBER = 'X-Outgoing-Number';
 
@@ -38,7 +34,7 @@ export const API_PATHS = {
 
 export const LOG_PREFIX = '[WebCalling]';
 
-export const DIAL_PLACEHOLDER = 'e.g. 0414313767';
+export const DIAL_PLACEHOLDER = 'AU 04… or 02… ; India +91… or 001191…';
 
 export const UI_TITLE = 'Web Calling Console';
 

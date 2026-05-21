@@ -1,4 +1,5 @@
-import { ENV_DEFAULTS, OUTGOING_NUMBER_BLOCK } from './constants';
+import { DEFAULT_VERIFIED_CLI, ENV_DEFAULTS } from './constants';
+import { toE164Cli } from '../utils/toE164Cli';
 
 function envOr(key: keyof ImportMetaEnv, fallback: string): string {
   const raw = import.meta.env[key];
@@ -20,25 +21,20 @@ export const appConfig = {
   turnPassword: envOr('VITE_TURN_PASSWORD', ENV_DEFAULTS.TURN_PASSWORD),
 } as const;
 
-function buildDefaultOutgoingBlock(): string[] {
-  const { prefix, suffixLength, count } = OUTGOING_NUMBER_BLOCK;
-  return Array.from({ length: count }, (_, i) => `${prefix}${String(i).padStart(suffixLength, '0')}`);
-}
-
-/** Outbound CLI list from VITE_VERIFIED_OUTBOUND_NUMBERS or default 0290178400–0290178499. */
+/** Outbound CLI list (E.164 61…) from VITE_VERIFIED_OUTBOUND_NUMBERS or default 61272643281. */
 export function getOutgoingNumbers(): string[] {
   const raw = import.meta.env.VITE_VERIFIED_OUTBOUND_NUMBERS;
   const trimmed = typeof raw === 'string' ? raw.trim() : '';
   if (trimmed) {
     const list = trimmed
       .split(',')
-      .map((s) => s.replace(/\D/g, ''))
+      .map((s) => toE164Cli(s))
       .filter((s) => s.length > 0);
     if (list.length > 0) {
       return list;
     }
   }
-  return buildDefaultOutgoingBlock();
+  return [DEFAULT_VERIFIED_CLI];
 }
 
 export const outgoingNumbers = getOutgoingNumbers();

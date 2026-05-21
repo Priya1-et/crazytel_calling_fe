@@ -1,6 +1,9 @@
-/** Format AU national numbers for display (02/03/07/08 landline, 04 mobile). */
+/** Format AU numbers for display (E.164 61… or national 0…). */
 export function formatAuNumber(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
+  let digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('61') && digits.length >= 11) {
+    digits = `0${digits.slice(2)}`;
+  }
   if (digits.length === 10 && digits.startsWith('0')) {
     if (
       digits.startsWith('02') ||

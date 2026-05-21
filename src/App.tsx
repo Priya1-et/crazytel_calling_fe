@@ -19,6 +19,7 @@ import {
 } from './config/constants';
 import { appConfig, buildIceServer, outgoingNumbers } from './config/env';
 import { formatAuNumber } from './utils/formatAuNumber';
+import { normalizeDialInput } from './utils/normalizeDialInput';
 import './App.css';
 
 function App() {
@@ -337,7 +338,8 @@ function App() {
       logError('DIAL.no-user-agent', 'UserAgent missing');
       return;
     }
-    if (!dialNumber.trim()) {
+    const cleanedDial = normalizeDialInput(dialNumber);
+    if (!cleanedDial) {
       logError('DIAL.empty-number');
       return;
     }
@@ -354,31 +356,31 @@ function App() {
     setMicDeviceLabel(mic.label ?? '');
     log('DIAL.preflight.mic.passed', { device: mic.label });
 
-    const target = UserAgent.makeURI(`sip:${dialNumber}@${appConfig.sipDomain}`);
+    const target = UserAgent.makeURI(`sip:${cleanedDial}@${appConfig.sipDomain}`);
     if (!target) {
       logError('DIAL.uri.invalid', {
-        dialNumber,
+        dialNumber: cleanedDial,
         sipDomain: appConfig.sipDomain,
       });
       setStatus('Invalid phone number');
       return;
     }
-    log('DIAL.uri.built', { target: target.toString() });
+    log('DIAL.uri.built', { target: target.toString(), cleanedDial });
 
     const callId = crypto.randomUUID();
     setActiveCallId(callId);
     log('DIAL.callId.assigned', { callId });
 
     const inviter = new Inviter(userAgentRef.current, target as URI);
-    log('DIAL.inviter.created', { callId, dialNumber, outgoingNumber });
+    log('DIAL.inviter.created', { callId, dialNumber: cleanedDial, outgoingNumber });
     activeSessionRef.current = inviter;
-    attachSessionEvents(inviter, callId, dialNumber);
+    attachSessionEvents(inviter, callId, cleanedDial);
 
-    setStatus(`Dialing ${dialNumber}...`);
+    setStatus(`Dialing ${cleanedDial}...`);
     await pushEvent('oncall', {
       callId,
       consultant,
-      phoneNumber: dialNumber,
+      phoneNumber: cleanedDial,
       outgoingNumber,
       direction: 'outbound',
       status: 'ringing',
@@ -409,7 +411,7 @@ function App() {
             void pushEvent('failed', {
               callId,
               consultant,
-              phoneNumber: dialNumber,
+              phoneNumber: cleanedDial,
               outgoingNumber,
               direction: 'outbound',
               status: 'failed',
@@ -434,7 +436,7 @@ function App() {
       void pushEvent('failed', {
         callId,
         consultant,
-        phoneNumber: dialNumber,
+        phoneNumber: cleanedDial,
         outgoingNumber,
         direction: 'outbound',
         status: 'failed',
