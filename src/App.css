@@ -296,3 +296,31 @@ button:disabled {
   color: #0a1124;
   min-width: 50px;
 }
+
+.app-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-view-recordings {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #863bff;
+  border-radius: 8px;
+  background: transparent;
+  color: #c6b5ff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-view-recordings:hover {
+  background: rgba(134, 59, 255, 0.15);
+}
+
+.record-choice-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #a8b4e0;
+}

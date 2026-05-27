@@ -26,10 +26,13 @@ export const ENV_DEFAULTS = {
 export const DEFAULT_VERIFIED_CLI = '61272643281' as const;
 
 export const SIP_HEADER_OUTGOING_NUMBER = 'X-Outgoing-Number';
+export const SIP_HEADER_RECORD_CALL = 'X-Record-Call';
 
 export const API_PATHS = {
   ASTERISK_EVENTS: '/v1/asterisk/events',
   DND: (consultant: string) => `/v1/dnd/${consultant}`,
+  RECORDINGS: '/v1/recordings',
+  RECORDINGS_STREAM: '/v1/recordings/stream',
 } as const;
 
 export const LOG_PREFIX = '[WebCalling]';

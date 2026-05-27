@@ -14,12 +14,14 @@ import {
   API_PATHS,
   DIAL_PLACEHOLDER,
   LOG_PREFIX,
-  SIP_HEADER_OUTGOING_NUMBER,
   UI_TITLE,
 } from './config/constants';
 import { appConfig, buildIceServer, outgoingNumbers } from './config/env';
 import { formatAuNumber } from './utils/formatAuNumber';
 import { normalizeDialInput } from './utils/normalizeDialInput';
+import { buildInboundAcceptHeaders, buildOutboundInviteHeaders } from './utils/sipHeaders';
+import { RecordCallModal } from './components/RecordCallModal';
+import { RecordingsPage } from './pages/RecordingsPage';
 import './App.css';
 
 function App() {
@@ -32,6 +34,9 @@ function App() {
   const [isOutgoingMenuOpen, setIsOutgoingMenuOpen] = useState(false);
   const [micStatus, setMicStatus] = useState<'unknown' | 'ok' | 'fail'>('unknown');
   const [micDeviceLabel, setMicDeviceLabel] = useState<string>('');
+  const [appView, setAppView] = useState<'call' | 'recordings'>('call');
+  const [showOutboundRecordModal, setShowOutboundRecordModal] = useState(false);
+  const [inboundRecordChoice, setInboundRecordChoice] = useState<boolean | null>(null);
 
   const userAgentRef = useRef<UserAgent | undefined>(undefined);
   const registererRef = useRef<Registerer | undefined>(undefined);
@@ -40,6 +45,7 @@ function App() {
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const registeredRef = useRef(false);
   const outgoingMenuRef = useRef<HTMLDivElement>(null);
+  const pendingOutboundDialRef = useRef<string | null>(null);
 
   const consultant = appConfig.sipUsername;
 
@@ -288,6 +294,7 @@ function App() {
     const caller = invitation.remoteIdentity.uri.user ?? 'unknown';
     log('INBOUND.invite.received', { caller, consultant });
     setIncomingNumber(caller);
+    setInboundRecordChoice(null);
     setStatus(`Incoming call from ${caller}`);
 
     const callId = crypto.randomUUID();
@@ -321,6 +328,7 @@ function App() {
         });
         inboundInviteRef.current = undefined;
         setIncomingNumber('');
+        setInboundRecordChoice(null);
         setActiveCallId(undefined);
       }
     });
@@ -366,16 +374,34 @@ function App() {
       return;
     }
     log('DIAL.uri.built', { target: target.toString(), cleanedDial });
+    pendingOutboundDialRef.current = cleanedDial;
+    setShowOutboundRecordModal(true);
+  };
+
+  const executeOutboundDial = async (recordCall: boolean) => {
+    setShowOutboundRecordModal(false);
+    const cleanedDial = pendingOutboundDialRef.current;
+    pendingOutboundDialRef.current = null;
+    if (!cleanedDial || !userAgentRef.current) {
+      return;
+    }
+
+    const target = UserAgent.makeURI(`sip:${cleanedDial}@${appConfig.sipDomain}`);
+    if (!target) {
+      setStatus('Invalid phone number');
+      return;
+    }
 
     const callId = crypto.randomUUID();
     setActiveCallId(callId);
-    log('DIAL.callId.assigned', { callId });
+    log('DIAL.callId.assigned', { callId, recordCall });
 
     const inviter = new Inviter(userAgentRef.current, target as URI);
-    log('DIAL.inviter.created', { callId, dialNumber: cleanedDial, outgoingNumber });
+    log('DIAL.inviter.created', { callId, dialNumber: cleanedDial, outgoingNumber, recordCall });
     activeSessionRef.current = inviter;
     attachSessionEvents(inviter, callId, cleanedDial);
 
+    const extraHeaders = buildOutboundInviteHeaders(outgoingNumber, recordCall);
     setStatus(`Dialing ${cleanedDial}...`);
     await pushEvent('oncall', {
       callId,
@@ -386,16 +412,10 @@ function App() {
       status: 'ringing',
     });
 
-    log('DIAL.invite.sending', {
-      callId,
-      target: target.toString(),
-      headers: { [SIP_HEADER_OUTGOING_NUMBER]: outgoingNumber },
-    });
+    log('DIAL.invite.sending', { callId, target: target.toString(), extraHeaders });
     try {
       await inviter.invite({
-        requestOptions: {
-          extraHeaders: [`${SIP_HEADER_OUTGOING_NUMBER}: ${outgoingNumber}`],
-        },
+        requestOptions: { extraHeaders },
         requestDelegate: {
           onReject: (response) => {
             const sipResponseCode = response.message.statusCode;
@@ -447,8 +467,14 @@ function App() {
 
   const answer = async () => {
     if (!inboundInviteRef.current) return;
-    log('INBOUND.answer.click');
-    await inboundInviteRef.current.accept();
+    if (inboundRecordChoice === null) {
+      setStatus('Choose whether to record before accepting');
+      return;
+    }
+    log('INBOUND.answer.click', { recordCall: inboundRecordChoice });
+    await inboundInviteRef.current.accept({
+      extraHeaders: buildInboundAcceptHeaders(inboundRecordChoice),
+    });
     log('INBOUND.answer.accepted');
   };
 
@@ -457,6 +483,7 @@ function App() {
     log('INBOUND.reject.click');
     await inboundInviteRef.current.reject();
     setStatus('Ready');
+    setInboundRecordChoice(null);
   };
 
   const hangup = async () => {
@@ -476,13 +503,23 @@ function App() {
   };
 
   const isOnCall = !!activeCallId;
+  const showInboundRecordModal = !!incomingNumber && inboundRecordChoice === null;
 
   const micDisplayLabel =
     micStatus === 'ok' ? (micDeviceLabel || 'Default') : micStatus === 'fail' ? 'Not available' : 'Checking...';
 
+  if (appView === 'recordings') {
+    return <RecordingsPage onBack={() => setAppView('call')} />;
+  }
+
   return (
     <main className="app">
-      <h1>{UI_TITLE}</h1>
+      <div className="app-top-row">
+        <h1>{UI_TITLE}</h1>
+        <button type="button" className="btn-view-recordings" onClick={() => setAppView('recordings')}>
+          View call recordings
+        </button>
+      </div>
 
       <div className="status-bar">
         <span className={`status-dot ${isRegistered ? 'online' : 'offline'}`} />
@@ -572,8 +609,17 @@ function App() {
         <section className="card card-incoming">
           <h2>Incoming Call</h2>
           <p className="caller-id">{formatAuNumber(incomingNumber)}</p>
+          {inboundRecordChoice !== null && (
+            <p className="record-choice-hint">
+              Recording: {inboundRecordChoice ? 'Yes' : 'No'}
+            </p>
+          )}
           <div className="actions">
-            <button className="btn-accept" onClick={answer}>
+            <button
+              className="btn-accept"
+              onClick={answer}
+              disabled={inboundRecordChoice === null}
+            >
               Accept
             </button>
             <button className="btn-reject" onClick={reject}>
@@ -582,6 +628,21 @@ function App() {
           </div>
         </section>
       )}
+
+      <RecordCallModal
+        open={showOutboundRecordModal}
+        title="Record this outbound call?"
+        onYes={() => void executeOutboundDial(true)}
+        onNo={() => void executeOutboundDial(false)}
+      />
+
+      <RecordCallModal
+        open={showInboundRecordModal}
+        title="Record this incoming call?"
+        message="Choose before accepting. The call will not start until you pick Yes or No."
+        onYes={() => setInboundRecordChoice(true)}
+        onNo={() => setInboundRecordChoice(false)}
+      />
 
       <audio ref={remoteAudioRef} autoPlay />
     </main>
