@@ -20,6 +20,12 @@ import { appConfig, buildIceServer, outgoingNumbers } from './config/env';
 import { formatAuNumber } from './utils/formatAuNumber';
 import { normalizeDialInput } from './utils/normalizeDialInput';
 import { buildInboundAcceptHeaders, buildOutboundInviteHeaders } from './utils/sipHeaders';
+import {
+  playOutboundTerminalSound,
+  playRingback,
+  stopAllCallSounds,
+  stopRingback,
+} from './utils/callSounds';
 import { RecordCallModal } from './components/RecordCallModal';
 import { RecordingsPage } from './pages/RecordingsPage';
 import './App.css';
@@ -46,6 +52,8 @@ function App() {
   const registeredRef = useRef(false);
   const outgoingMenuRef = useRef<HTMLDivElement>(null);
   const pendingOutboundDialRef = useRef<string | null>(null);
+  /** Avoid playing disconnect tone if onReject/already played a mapped tone */
+  const outboundTerminalTonePlayedRef = useRef(false);
 
   const consultant = appConfig.sipUsername;
 
@@ -146,8 +154,10 @@ function App() {
       });
       if (state === SessionState.Establishing) {
         setStatus('Ringing...');
+        playRingback();
       }
       if (state === SessionState.Established) {
+        stopRingback();
         setStatus('Call active');
         log('SIP.session.established', { callId });
         void pushEvent('oncall', {
@@ -161,6 +171,11 @@ function App() {
         bindMedia(session);
       }
       if (state === SessionState.Terminated) {
+        stopRingback();
+        if (!outboundTerminalTonePlayedRef.current) {
+          playOutboundTerminalSound();
+        }
+        outboundTerminalTonePlayedRef.current = false;
         setStatus('Call ended');
         log('SIP.session.terminated', { callId });
         void pushEvent('disconnected', {
@@ -264,6 +279,7 @@ function App() {
     register();
 
     return () => {
+      stopAllCallSounds();
       registererRef.current?.unregister().catch(() => null);
       userAgentRef.current?.stop().catch(() => null);
     };
@@ -319,6 +335,7 @@ function App() {
         bindMedia(invitation);
       }
       if (state === SessionState.Terminated) {
+        stopAllCallSounds();
         setStatus('Ready');
         void pushEvent('disconnected', {
           callId,
@@ -395,6 +412,7 @@ function App() {
     const callId = crypto.randomUUID();
     setActiveCallId(callId);
     log('DIAL.callId.assigned', { callId, recordCall });
+    outboundTerminalTonePlayedRef.current = false;
 
     const inviter = new Inviter(userAgentRef.current, target as URI);
     log('DIAL.inviter.created', { callId, dialNumber: cleanedDial, outgoingNumber, recordCall });
@@ -425,6 +443,8 @@ function App() {
               sipResponseCode,
               sipResponseReason,
             });
+            outboundTerminalTonePlayedRef.current = true;
+            playOutboundTerminalSound(sipResponseCode ?? undefined);
             setStatus(`Call failed: ${sipResponseCode} ${sipResponseReason}`);
             activeSessionRef.current = undefined;
             setActiveCallId(undefined);
@@ -450,6 +470,8 @@ function App() {
         name: e.name,
         message: e.message,
       });
+      outboundTerminalTonePlayedRef.current = true;
+      playOutboundTerminalSound(undefined);
       setStatus(`Call failed: ${e.message}`);
       activeSessionRef.current = undefined;
       setActiveCallId(undefined);
