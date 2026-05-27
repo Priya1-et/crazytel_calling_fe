@@ -8,6 +8,7 @@ export interface RecordingListItem {
   direction: RecordingDirection;
   filename: string;
   sizeBytes: number;
+  durationSeconds?: number;
   createdAt: string;
   streamUrl: string;
 }

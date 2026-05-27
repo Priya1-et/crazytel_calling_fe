@@ -25,6 +25,15 @@ function formatWhen(iso: string): string {
   }
 }
 
+function formatDuration(seconds?: number): string | null {
+  if (seconds === undefined || seconds < 0) {
+    return null;
+  }
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 export function RecordingsPage({ onBack }: RecordingsPageProps) {
   const [filter, setFilter] = useState<'all' | RecordingDirection>('all');
   const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
@@ -79,7 +88,9 @@ export function RecordingsPage({ onBack }: RecordingsPageProps) {
       )}
 
       <ul className="recordings-list">
-        {recordings.map((rec) => (
+        {recordings.map((rec) => {
+          const durationLabel = formatDuration(rec.durationSeconds);
+          return (
           <li key={rec.id} className="recordings-item">
             <div className="recordings-meta">
               <span className={`recordings-badge recordings-badge-${rec.direction}`}>
@@ -88,11 +99,13 @@ export function RecordingsPage({ onBack }: RecordingsPageProps) {
               <span className="recordings-name">{rec.filename}</span>
               <span className="recordings-sub">
                 {formatWhen(rec.createdAt)} · {formatBytes(rec.sizeBytes)}
+                {durationLabel ? ` · ${durationLabel}` : ''}
               </span>
             </div>
-            <audio controls preload="none" src={recordingStreamUrl(rec.id)} className="recordings-player" />
+            <audio controls preload="metadata" src={recordingStreamUrl(rec.id)} className="recordings-player" />
           </li>
-        ))}
+          );
+        })}
       </ul>
     </main>
   );
