@@ -45,6 +45,9 @@ function App() {
   const [showOutboundRecordModal, setShowOutboundRecordModal] = useState(false);
   const [inboundRecordChoice, setInboundRecordChoice] = useState<boolean | null>(null);
   const [inboundSessionActive, setInboundSessionActive] = useState(false);
+  const [inboundEstablishedAtMs, setInboundEstablishedAtMs] = useState<number | null>(null);
+  const [inboundDurationSeconds, setInboundDurationSeconds] = useState(0);
+  const [inboundActionInFlight, setInboundActionInFlight] = useState(false);
 
   const userAgentRef = useRef<UserAgent | undefined>(undefined);
   const registererRef = useRef<Registerer | undefined>(undefined);
@@ -57,6 +60,7 @@ function App() {
   /** Avoid playing disconnect tone if onReject/already played a mapped tone */
   const outboundTerminalTonePlayedRef = useRef(false);
   const inboundActionInFlightRef = useRef(false);
+  const inboundAcceptAttemptedRef = useRef(false);
 
   const consultant = appConfig.sipUsername;
 
@@ -313,7 +317,11 @@ function App() {
     setIncomingNumber('');
     setInboundRecordChoice(null);
     setInboundSessionActive(false);
+    setInboundEstablishedAtMs(null);
+    setInboundDurationSeconds(0);
+    setInboundActionInFlight(false);
     setActiveCallId(undefined);
+    inboundAcceptAttemptedRef.current = false;
   };
 
   const dismissInboundInvitation = async (invitation: Invitation) => {
@@ -344,6 +352,9 @@ function App() {
     setIncomingNumber(caller);
     setInboundRecordChoice(null);
     setInboundSessionActive(false);
+    setInboundEstablishedAtMs(null);
+    setInboundDurationSeconds(0);
+    inboundAcceptAttemptedRef.current = false;
     setStatus(`Incoming call from ${caller}`);
 
     const callId = crypto.randomUUID();
@@ -365,6 +376,7 @@ function App() {
       });
       if (state === SessionState.Established) {
         setInboundSessionActive(true);
+        setInboundEstablishedAtMs(Date.now());
         setStatus('Incoming call active');
         bindMedia(invitation);
       }
@@ -521,10 +533,12 @@ function App() {
   const runInboundAction = async (action: () => Promise<void>) => {
     if (inboundActionInFlightRef.current) return;
     inboundActionInFlightRef.current = true;
+    setInboundActionInFlight(true);
     try {
       await action();
     } finally {
       inboundActionInFlightRef.current = false;
+      setInboundActionInFlight(false);
     }
   };
 
@@ -541,6 +555,21 @@ function App() {
         return;
       }
       if (invitation.state === SessionState.Terminated) return;
+      if (inboundAcceptAttemptedRef.current) return;
+      inboundAcceptAttemptedRef.current = true;
+
+      setStatus('Checking microphone…');
+      const mic = await testMicrophone();
+      if (!mic.ok) {
+        setMicStatus('fail');
+        setMicDeviceLabel(mic.error ?? '');
+        setStatus(`Microphone error: ${mic.error}`);
+        inboundAcceptAttemptedRef.current = false;
+        return;
+      }
+      setMicStatus('ok');
+      setMicDeviceLabel(mic.label ?? '');
+
       log('INBOUND.answer.click', { recordCall: inboundRecordChoice });
       try {
         await invitation.accept({
@@ -552,6 +581,7 @@ function App() {
           state: SessionState[invitation.state],
           message: err instanceof Error ? err.message : String(err),
         });
+        inboundAcceptAttemptedRef.current = false;
       }
     });
   };
@@ -585,6 +615,16 @@ function App() {
   const isOnCall = !!activeCallId;
   const showIncomingCallModal = !!incomingNumber;
 
+  useEffect(() => {
+    if (!inboundSessionActive || !inboundEstablishedAtMs) return;
+    const tick = () => {
+      setInboundDurationSeconds(Math.floor((Date.now() - inboundEstablishedAtMs) / 1000));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [inboundSessionActive, inboundEstablishedAtMs]);
+
   const micDisplayLabel =
     micStatus === 'ok' ? (micDeviceLabel || 'Default') : micStatus === 'fail' ? 'Not available' : 'Checking...';
 
@@ -594,6 +634,8 @@ function App() {
       callerNumber={incomingNumber}
       recordChoice={inboundRecordChoice}
       isActive={inboundSessionActive}
+      durationSeconds={inboundDurationSeconds}
+      actionInFlight={inboundActionInFlight}
       onRecordYes={() => setInboundRecordChoice(true)}
       onRecordNo={() => setInboundRecordChoice(false)}
       onAccept={answer}

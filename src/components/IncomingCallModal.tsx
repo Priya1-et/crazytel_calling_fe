@@ -6,6 +6,8 @@ type IncomingCallModalProps = {
   callerNumber: string;
   recordChoice: boolean | null;
   isActive: boolean;
+  durationSeconds: number;
+  actionInFlight: boolean;
   onRecordYes: () => void;
   onRecordNo: () => void;
   onAccept: () => void;
@@ -13,11 +15,20 @@ type IncomingCallModalProps = {
   onHangup: () => void;
 };
 
+function formatDuration(totalSeconds: number) {
+  const secs = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export function IncomingCallModal({
   open,
   callerNumber,
   recordChoice,
   isActive,
+  durationSeconds,
+  actionInFlight,
   onRecordYes,
   onRecordNo,
   onAccept,
@@ -45,7 +56,8 @@ export function IncomingCallModal({
 
         {isActive ? (
           <>
-            <p className="incoming-call-message">Call connected</p>
+            <p className="incoming-call-message">Ongoing call</p>
+            <p className="incoming-call-timer">{formatDuration(durationSeconds)}</p>
             <div className="incoming-call-actions">
               <button type="button" className="btn-incoming-hangup" onClick={onHangup}>
                 End call
@@ -79,11 +91,11 @@ export function IncomingCallModal({
                 type="button"
                 className="btn-incoming-accept"
                 onClick={onAccept}
-                disabled={recordChoice === null}
+                disabled={recordChoice === null || actionInFlight}
               >
-                Accept
+                {actionInFlight ? 'Accepting…' : 'Accept'}
               </button>
-              <button type="button" className="btn-incoming-reject" onClick={onReject}>
+              <button type="button" className="btn-incoming-reject" onClick={onReject} disabled={actionInFlight}>
                 Reject
               </button>
             </div>
