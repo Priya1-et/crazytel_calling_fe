@@ -26,6 +26,7 @@ import {
   stopAllCallSounds,
   stopRingback,
 } from './utils/callSounds';
+import { IncomingCallModal } from './components/IncomingCallModal';
 import { RecordCallModal } from './components/RecordCallModal';
 import { RecordingsPage } from './pages/RecordingsPage';
 import './App.css';
@@ -43,6 +44,7 @@ function App() {
   const [appView, setAppView] = useState<'call' | 'recordings'>('call');
   const [showOutboundRecordModal, setShowOutboundRecordModal] = useState(false);
   const [inboundRecordChoice, setInboundRecordChoice] = useState<boolean | null>(null);
+  const [inboundSessionActive, setInboundSessionActive] = useState(false);
 
   const userAgentRef = useRef<UserAgent | undefined>(undefined);
   const registererRef = useRef<Registerer | undefined>(undefined);
@@ -54,6 +56,7 @@ function App() {
   const pendingOutboundDialRef = useRef<string | null>(null);
   /** Avoid playing disconnect tone if onReject/already played a mapped tone */
   const outboundTerminalTonePlayedRef = useRef(false);
+  const inboundActionInFlightRef = useRef(false);
 
   const consultant = appConfig.sipUsername;
 
@@ -305,12 +308,42 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const clearInboundUi = () => {
+    inboundInviteRef.current = undefined;
+    setIncomingNumber('');
+    setInboundRecordChoice(null);
+    setInboundSessionActive(false);
+    setActiveCallId(undefined);
+  };
+
+  const dismissInboundInvitation = async (invitation: Invitation) => {
+    try {
+      if (invitation.state === SessionState.Established) {
+        await invitation.bye();
+      } else if (
+        invitation.state === SessionState.Initial ||
+        invitation.state === SessionState.Establishing
+      ) {
+        await invitation.reject();
+      }
+    } catch (err) {
+      logError('INBOUND.dismiss.failed', {
+        state: SessionState[invitation.state],
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      clearInboundUi();
+      setStatus('Ready');
+    }
+  };
+
   function handleIncomingCall(invitation: Invitation) {
     inboundInviteRef.current = invitation;
     const caller = invitation.remoteIdentity.uri.user ?? 'unknown';
     log('INBOUND.invite.received', { caller, consultant });
     setIncomingNumber(caller);
     setInboundRecordChoice(null);
+    setInboundSessionActive(false);
     setStatus(`Incoming call from ${caller}`);
 
     const callId = crypto.randomUUID();
@@ -331,6 +364,7 @@ function App() {
         state: SessionState[state],
       });
       if (state === SessionState.Established) {
+        setInboundSessionActive(true);
         setStatus('Incoming call active');
         bindMedia(invitation);
       }
@@ -343,10 +377,7 @@ function App() {
           phoneNumber: caller,
           status: 'disconnected',
         });
-        inboundInviteRef.current = undefined;
-        setIncomingNumber('');
-        setInboundRecordChoice(null);
-        setActiveCallId(undefined);
+        clearInboundUi();
       }
     });
   }
@@ -487,25 +518,51 @@ function App() {
     }
   };
 
-  const answer = async () => {
-    if (!inboundInviteRef.current) return;
-    if (inboundRecordChoice === null) {
-      setStatus('Choose whether to record before accepting');
-      return;
+  const runInboundAction = async (action: () => Promise<void>) => {
+    if (inboundActionInFlightRef.current) return;
+    inboundActionInFlightRef.current = true;
+    try {
+      await action();
+    } finally {
+      inboundActionInFlightRef.current = false;
     }
-    log('INBOUND.answer.click', { recordCall: inboundRecordChoice });
-    await inboundInviteRef.current.accept({
-      extraHeaders: buildInboundAcceptHeaders(inboundRecordChoice),
-    });
-    log('INBOUND.answer.accepted');
   };
 
-  const reject = async () => {
-    if (!inboundInviteRef.current) return;
-    log('INBOUND.reject.click');
-    await inboundInviteRef.current.reject();
-    setStatus('Ready');
-    setInboundRecordChoice(null);
+  const answer = () => {
+    void runInboundAction(async () => {
+      const invitation = inboundInviteRef.current;
+      if (!invitation) return;
+      if (inboundRecordChoice === null) {
+        setStatus('Choose whether to record before accepting');
+        return;
+      }
+      if (invitation.state === SessionState.Established) {
+        setInboundSessionActive(true);
+        return;
+      }
+      if (invitation.state === SessionState.Terminated) return;
+      log('INBOUND.answer.click', { recordCall: inboundRecordChoice });
+      try {
+        await invitation.accept({
+          extraHeaders: buildInboundAcceptHeaders(inboundRecordChoice),
+        });
+        log('INBOUND.answer.accepted');
+      } catch (err) {
+        logError('INBOUND.answer.failed', {
+          state: SessionState[invitation.state],
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+  };
+
+  const rejectInbound = () => {
+    void runInboundAction(async () => {
+      const invitation = inboundInviteRef.current;
+      if (!invitation) return;
+      log('INBOUND.reject.click', { state: SessionState[invitation.state] });
+      await dismissInboundInvitation(invitation);
+    });
   };
 
   const hangup = async () => {
@@ -519,19 +576,40 @@ function App() {
       log('HANGUP.cancel.outbound');
       await session.cancel();
     } else if (session instanceof Invitation) {
-      log('HANGUP.reject.inbound');
-      await session.reject();
+      log('HANGUP.inbound.dismiss', { state: SessionState[session.state] });
+      await dismissInboundInvitation(session);
+      return;
     }
   };
 
   const isOnCall = !!activeCallId;
-  const showInboundRecordModal = !!incomingNumber && inboundRecordChoice === null;
+  const showIncomingCallModal = !!incomingNumber;
 
   const micDisplayLabel =
     micStatus === 'ok' ? (micDeviceLabel || 'Default') : micStatus === 'fail' ? 'Not available' : 'Checking...';
 
+  const incomingCallOverlay = (
+    <IncomingCallModal
+      open={showIncomingCallModal}
+      callerNumber={incomingNumber}
+      recordChoice={inboundRecordChoice}
+      isActive={inboundSessionActive}
+      onRecordYes={() => setInboundRecordChoice(true)}
+      onRecordNo={() => setInboundRecordChoice(false)}
+      onAccept={answer}
+      onReject={rejectInbound}
+      onHangup={() => void hangup()}
+    />
+  );
+
   if (appView === 'recordings') {
-    return <RecordingsPage onBack={() => setAppView('call')} />;
+    return (
+      <>
+        <RecordingsPage onBack={() => setAppView('call')} />
+        {incomingCallOverlay}
+        <audio ref={remoteAudioRef} autoPlay />
+      </>
+    );
   }
 
   return (
@@ -627,30 +705,6 @@ function App() {
         </div>
       </section>
 
-      {incomingNumber && (
-        <section className="card card-incoming">
-          <h2>Incoming Call</h2>
-          <p className="caller-id">{formatAuNumber(incomingNumber)}</p>
-          {inboundRecordChoice !== null && (
-            <p className="record-choice-hint">
-              Recording: {inboundRecordChoice ? 'Yes' : 'No'}
-            </p>
-          )}
-          <div className="actions">
-            <button
-              className="btn-accept"
-              onClick={answer}
-              disabled={inboundRecordChoice === null}
-            >
-              Accept
-            </button>
-            <button className="btn-reject" onClick={reject}>
-              Reject
-            </button>
-          </div>
-        </section>
-      )}
-
       <RecordCallModal
         open={showOutboundRecordModal}
         title="Record this outbound call?"
@@ -658,13 +712,7 @@ function App() {
         onNo={() => void executeOutboundDial(false)}
       />
 
-      <RecordCallModal
-        open={showInboundRecordModal}
-        title="Record this incoming call?"
-        message="Choose before accepting. The call will not start until you pick Yes or No."
-        onYes={() => setInboundRecordChoice(true)}
-        onNo={() => setInboundRecordChoice(false)}
-      />
+      {incomingCallOverlay}
 
       <audio ref={remoteAudioRef} autoPlay />
     </main>
