@@ -19,6 +19,7 @@ import {
 import { appConfig, buildIceServer, outgoingNumbers } from './config/env';
 import { formatAuNumber } from './utils/formatAuNumber';
 import { normalizeDialInput } from './utils/normalizeDialInput';
+import { setSessionHold, setSessionMediaEnabled } from './utils/sessionHold';
 import { buildInboundAcceptHeaders, buildOutboundInviteHeaders } from './utils/sipHeaders';
 import {
   playOutboundTerminalSound,
@@ -26,6 +27,10 @@ import {
   stopAllCallSounds,
   stopRingback,
 } from './utils/callSounds';
+import {
+  ActiveOutboundCallPanel,
+  type OutboundCallPhase,
+} from './components/ActiveOutboundCallPanel';
 import { IncomingCallModal } from './components/IncomingCallModal';
 import { RecordCallModal } from './components/RecordCallModal';
 import { RecordingsPage } from './pages/RecordingsPage';
@@ -48,6 +53,13 @@ function App() {
   const [inboundEstablishedAtMs, setInboundEstablishedAtMs] = useState<number | null>(null);
   const [inboundDurationSeconds, setInboundDurationSeconds] = useState(0);
   const [inboundActionInFlight, setInboundActionInFlight] = useState(false);
+  const [outboundPhase, setOutboundPhase] = useState<OutboundCallPhase>('idle');
+  const [outboundActiveNumber, setOutboundActiveNumber] = useState('');
+  const [outboundEstablishedAtMs, setOutboundEstablishedAtMs] = useState<number | null>(null);
+  const [outboundHoldStartedAtMs, setOutboundHoldStartedAtMs] = useState<number | null>(null);
+  const [outboundDurationSeconds, setOutboundDurationSeconds] = useState(0);
+  const [outboundHoldSeconds, setOutboundHoldSeconds] = useState(0);
+  const [outboundHoldActionInFlight, setOutboundHoldActionInFlight] = useState(false);
 
   const userAgentRef = useRef<UserAgent | undefined>(undefined);
   const registererRef = useRef<Registerer | undefined>(undefined);
@@ -151,6 +163,16 @@ function App() {
     }
   };
 
+  const resetOutboundCallUi = () => {
+    setOutboundPhase('idle');
+    setOutboundActiveNumber('');
+    setOutboundEstablishedAtMs(null);
+    setOutboundHoldStartedAtMs(null);
+    setOutboundDurationSeconds(0);
+    setOutboundHoldSeconds(0);
+    setOutboundHoldActionInFlight(false);
+  };
+
   const attachSessionEvents = (session: Session, callId: string, phoneNumber: string) => {
     session.stateChange.addListener((state) => {
       log('SIP.session.state', {
@@ -160,11 +182,16 @@ function App() {
         state: SessionState[state],
       });
       if (state === SessionState.Establishing) {
+        setOutboundPhase('connecting');
         setStatus('Ringing...');
         playRingback();
       }
       if (state === SessionState.Established) {
         stopRingback();
+        setOutboundPhase('active');
+        setOutboundEstablishedAtMs(Date.now());
+        setOutboundHoldStartedAtMs(null);
+        setOutboundHoldSeconds(0);
         setStatus('Call active');
         log('SIP.session.established', { callId });
         void pushEvent('oncall', {
@@ -193,6 +220,7 @@ function App() {
         });
         activeSessionRef.current = undefined;
         setActiveCallId(undefined);
+        resetOutboundCallUi();
       }
     });
   };
@@ -460,6 +488,8 @@ function App() {
     const inviter = new Inviter(userAgentRef.current, target as URI);
     log('DIAL.inviter.created', { callId, dialNumber: cleanedDial, outgoingNumber, recordCall });
     activeSessionRef.current = inviter;
+    setOutboundActiveNumber(cleanedDial);
+    setOutboundPhase('connecting');
     attachSessionEvents(inviter, callId, cleanedDial);
 
     const extraHeaders = buildOutboundInviteHeaders(outgoingNumber, recordCall);
@@ -491,6 +521,7 @@ function App() {
             setStatus(`Call failed: ${sipResponseCode} ${sipResponseReason}`);
             activeSessionRef.current = undefined;
             setActiveCallId(undefined);
+            resetOutboundCallUi();
             void pushEvent('failed', {
               callId,
               consultant,
@@ -518,6 +549,7 @@ function App() {
       setStatus(`Call failed: ${e.message}`);
       activeSessionRef.current = undefined;
       setActiveCallId(undefined);
+      resetOutboundCallUi();
       void pushEvent('failed', {
         callId,
         consultant,
@@ -528,6 +560,79 @@ function App() {
         endReason: 'failed',
       });
     }
+  };
+
+  const holdOutbound = () => {
+    void (async () => {
+      const session = activeSessionRef.current;
+      if (outboundPhase !== 'active' || !session || session.state !== SessionState.Established) {
+        return;
+      }
+      if (outboundHoldActionInFlight) return;
+      setOutboundHoldActionInFlight(true);
+      log('OUTBOUND.hold.click', { number: outboundActiveNumber });
+      try {
+        await setSessionHold(session, true);
+        remoteAudioRef.current?.pause();
+        setOutboundPhase('on-hold');
+        setOutboundHoldStartedAtMs(Date.now());
+        setStatus('Call on hold');
+        if (activeCallId) {
+          void pushEvent('hold', {
+            callId: activeCallId,
+            consultant,
+            phoneNumber: outboundActiveNumber,
+            direction: 'outbound',
+            status: 'on-hold',
+          });
+        }
+      } catch (err) {
+        logError('OUTBOUND.hold.failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        setStatus('Hold failed — try again');
+      } finally {
+        setOutboundHoldActionInFlight(false);
+      }
+    })();
+  };
+
+  const resumeOutbound = () => {
+    void (async () => {
+      const session = activeSessionRef.current;
+      if (outboundPhase !== 'on-hold' || !session || session.state !== SessionState.Established) {
+        return;
+      }
+      if (outboundHoldActionInFlight) return;
+      setOutboundHoldActionInFlight(true);
+      log('OUTBOUND.resume.click', { number: outboundActiveNumber });
+      try {
+        await setSessionHold(session, false);
+        setSessionMediaEnabled(session, true);
+        bindMedia(session);
+        void remoteAudioRef.current?.play().catch(() => null);
+        setOutboundPhase('active');
+        setOutboundHoldStartedAtMs(null);
+        setOutboundHoldSeconds(0);
+        setStatus('Call active');
+        if (activeCallId) {
+          void pushEvent('resume', {
+            callId: activeCallId,
+            consultant,
+            phoneNumber: outboundActiveNumber,
+            direction: 'outbound',
+            status: 'answered',
+          });
+        }
+      } catch (err) {
+        logError('OUTBOUND.resume.failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        setStatus('Resume failed — try again');
+      } finally {
+        setOutboundHoldActionInFlight(false);
+      }
+    })();
   };
 
   const runInboundAction = async (action: () => Promise<void>) => {
@@ -614,6 +719,32 @@ function App() {
 
   const isOnCall = !!activeCallId;
   const showIncomingCallModal = !!incomingNumber;
+  const showOutboundCallPanel = outboundPhase !== 'idle' && !!outboundActiveNumber;
+
+  useEffect(() => {
+    if (
+      !outboundEstablishedAtMs ||
+      (outboundPhase !== 'active' && outboundPhase !== 'on-hold')
+    ) {
+      return;
+    }
+    const tick = () => {
+      setOutboundDurationSeconds(Math.floor((Date.now() - outboundEstablishedAtMs) / 1000));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [outboundEstablishedAtMs, outboundPhase]);
+
+  useEffect(() => {
+    if (outboundPhase !== 'on-hold' || !outboundHoldStartedAtMs) return;
+    const tick = () => {
+      setOutboundHoldSeconds(Math.floor((Date.now() - outboundHoldStartedAtMs) / 1000));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [outboundPhase, outboundHoldStartedAtMs]);
 
   useEffect(() => {
     if (!inboundSessionActive || !inboundEstablishedAtMs) return;
@@ -741,11 +872,24 @@ function App() {
           >
             Dial
           </button>
-          <button className="btn-hangup" onClick={hangup} disabled={!isOnCall}>
-            Hangup
-          </button>
+          {!showOutboundCallPanel && (
+            <button className="btn-hangup" onClick={() => void hangup()} disabled={!isOnCall}>
+              Hangup
+            </button>
+          )}
         </div>
       </section>
+
+      <ActiveOutboundCallPanel
+        phase={outboundPhase}
+        dialNumber={outboundActiveNumber}
+        callDurationSeconds={outboundDurationSeconds}
+      holdDurationSeconds={outboundHoldSeconds}
+      holdActionInFlight={outboundHoldActionInFlight}
+      onHold={holdOutbound}
+      onResume={resumeOutbound}
+      onHangup={() => void hangup()}
+      />
 
       <RecordCallModal
         open={showOutboundRecordModal}

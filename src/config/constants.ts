@@ -44,6 +44,8 @@ export const UI_TITLE = 'Web Calling Console';
 export const ASTERISK_EVENT_TYPES = [
   'inbound',
   'oncall',
+  'hold',
+  'resume',
   'disconnected',
   'failed',
   'DNDon',
