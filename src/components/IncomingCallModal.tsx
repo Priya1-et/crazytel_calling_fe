@@ -6,12 +6,18 @@ type IncomingCallModalProps = {
   callerNumber: string;
   recordChoice: boolean | null;
   isActive: boolean;
+  isOnHold: boolean;
+  callWaitingHint: boolean;
   durationSeconds: number;
+  holdDurationSeconds: number;
   actionInFlight: boolean;
+  holdActionInFlight: boolean;
   onRecordYes: () => void;
   onRecordNo: () => void;
   onAccept: () => void;
   onReject: () => void;
+  onHold: () => void;
+  onResume: () => void;
   onHangup: () => void;
 };
 
@@ -27,12 +33,18 @@ export function IncomingCallModal({
   callerNumber,
   recordChoice,
   isActive,
+  isOnHold,
+  callWaitingHint,
   durationSeconds,
+  holdDurationSeconds,
   actionInFlight,
+  holdActionInFlight,
   onRecordYes,
   onRecordNo,
   onAccept,
   onReject,
+  onHold,
+  onResume,
   onHangup,
 }: IncomingCallModalProps) {
   if (!open) {
@@ -56,16 +68,57 @@ export function IncomingCallModal({
 
         {isActive ? (
           <>
-            <p className="incoming-call-message">Ongoing call</p>
-            <p className="incoming-call-timer">{formatDuration(durationSeconds)}</p>
+            {isOnHold ? (
+              <>
+                <p className="incoming-call-message incoming-call-message--hold">Call on hold</p>
+                <p className="incoming-call-timer incoming-call-timer--hold">
+                  On hold · {formatDuration(holdDurationSeconds)}
+                </p>
+                <p className="incoming-call-hold-hint">Caller hears hold music while you are on hold.</p>
+              </>
+            ) : (
+              <>
+                <p className="incoming-call-message">Ongoing call</p>
+                <p className="incoming-call-timer">{formatDuration(durationSeconds)}</p>
+              </>
+            )}
             <div className="incoming-call-actions">
-              <button type="button" className="btn-incoming-hangup" onClick={onHangup}>
+              {!isOnHold ? (
+                <button
+                  type="button"
+                  className="btn-incoming-hold"
+                  onClick={onHold}
+                  disabled={holdActionInFlight}
+                >
+                  {holdActionInFlight ? 'Holding…' : 'Hold'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-incoming-resume"
+                  onClick={onResume}
+                  disabled={holdActionInFlight}
+                >
+                  {holdActionInFlight ? 'Resuming…' : 'Resume'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-incoming-hangup"
+                onClick={onHangup}
+                disabled={holdActionInFlight}
+              >
                 End call
               </button>
             </div>
           </>
         ) : (
           <>
+            {callWaitingHint && (
+              <p className="incoming-call-waiting-hint">
+                Another call is active — answering will put it on hold.
+              </p>
+            )}
             {recordChoice === null ? (
               <>
                 <p className="incoming-call-message">

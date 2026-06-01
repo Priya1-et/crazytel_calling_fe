@@ -142,12 +142,56 @@
   background: #ef4444;
 }
 
+.incoming-call-message--hold {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.incoming-call-timer--hold {
+  color: #fbbf24;
+}
+
+.incoming-call-hold-hint {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8rem;
+  color: #8b9cf7;
+  line-height: 1.4;
+}
+
+.incoming-call-waiting-hint {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.btn-incoming-hold {
+  background: #f59e0b;
+  color: #0a1124;
+}
+
+.btn-incoming-hold:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.btn-incoming-resume {
+  background: #34d399;
+  color: #0a1124;
+}
+
+.btn-incoming-resume:hover:not(:disabled) {
+  background: #2bb888;
+}
+
 .btn-incoming-hangup {
-  width: 100%;
+  flex: 1;
   background: #f87171;
   color: #fff;
 }
 
-.btn-incoming-hangup:hover {
+.btn-incoming-hangup:hover:not(:disabled) {
   background: #ef4444;
 }
