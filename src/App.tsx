@@ -32,7 +32,14 @@ import {
   type OutboundCallPhase,
 } from './components/ActiveOutboundCallPanel';
 import { IncomingCallModal } from './components/IncomingCallModal';
+import { MissedCallsPanel } from './components/MissedCallsPanel';
 import { RecordCallModal } from './components/RecordCallModal';
+import {
+  loadMissedCalls,
+  normalizeMissedNumber,
+  saveMissedCalls,
+  type MissedCallEntry,
+} from './utils/missedCallsStorage';
 import { RecordingsPage } from './pages/RecordingsPage';
 import './App.css';
 
@@ -57,7 +64,8 @@ function App() {
   const [inboundHoldStartedAtMs, setInboundHoldStartedAtMs] = useState<number | null>(null);
   const [inboundHoldSeconds, setInboundHoldSeconds] = useState(0);
   const [inboundHoldActionInFlight, setInboundHoldActionInFlight] = useState(false);
-  const [callWaitingHint, setCallWaitingHint] = useState(false);
+  const [willDisconnectOngoingCall, setWillDisconnectOngoingCall] = useState(false);
+  const [missedCalls, setMissedCalls] = useState<MissedCallEntry[]>(() => loadMissedCalls());
   const [outboundPhase, setOutboundPhase] = useState<OutboundCallPhase>('idle');
   const [outboundActiveNumber, setOutboundActiveNumber] = useState('');
   const [outboundEstablishedAtMs, setOutboundEstablishedAtMs] = useState<number | null>(null);
@@ -80,7 +88,9 @@ function App() {
   const inboundAcceptAttemptedRef = useRef(false);
   const inboundCallIdRef = useRef<string | undefined>(undefined);
   const outboundCallIdRef = useRef<string | undefined>(undefined);
-  const heldSessionRef = useRef<Session | undefined>(undefined);
+  const ongoingCallRef = useRef<Session | undefined>(undefined);
+  const ringingInboundAcceptedRef = useRef(false);
+  const willDisconnectOngoingCallRef = useRef(false);
 
   const consultant = appConfig.sipUsername;
 
@@ -229,9 +239,7 @@ function App() {
         });
         activeSessionRef.current = undefined;
         outboundCallIdRef.current = undefined;
-        if (heldSessionRef.current instanceof Inviter) {
-          heldSessionRef.current = undefined;
-        }
+        ongoingCallRef.current = undefined;
         setActiveCallId(undefined);
         resetOutboundCallUi();
       }
@@ -365,10 +373,12 @@ function App() {
     setInboundHoldSeconds(0);
     setInboundActionInFlight(false);
     setInboundHoldActionInFlight(false);
-    setCallWaitingHint(false);
+    setWillDisconnectOngoingCall(false);
+    willDisconnectOngoingCallRef.current = false;
     inboundCallIdRef.current = undefined;
     inboundAcceptAttemptedRef.current = false;
-    if (!heldSessionRef.current) {
+    ringingInboundAcceptedRef.current = false;
+    if (!ongoingCallRef.current) {
       setActiveCallId(undefined);
     }
   };
@@ -378,29 +388,148 @@ function App() {
     return (
       session instanceof Inviter &&
       session.state === SessionState.Established &&
-      outboundPhase === 'active'
+      (outboundPhase === 'active' || outboundPhase === 'on-hold')
     );
   };
 
-  const holdOtherCallBeforeAnswer = async () => {
+  const captureOngoingCallForWaiting = (): boolean => {
     const outbound = activeSessionRef.current;
-    if (outbound instanceof Inviter && outbound.state === SessionState.Established && outboundPhase === 'active') {
-      log('CALL_WAITING.hold.outbound');
-      await setSessionHold(outbound, true);
-      setOutboundPhase('on-hold');
-      setOutboundHoldStartedAtMs(Date.now());
-      heldSessionRef.current = outbound;
-      remoteAudioRef.current?.pause();
+    if (
+      outbound instanceof Inviter &&
+      outbound.state !== SessionState.Terminated &&
+      outboundPhase !== 'idle'
+    ) {
+      ongoingCallRef.current = outbound;
+      return true;
+    }
+    const inbound = inboundInviteRef.current;
+    if (
+      inbound &&
+      inbound.state === SessionState.Established &&
+      inboundSessionActive
+    ) {
+      ongoingCallRef.current = inbound;
+      return true;
+    }
+    return false;
+  };
+
+  const addMissedCall = (phoneNumber: string) => {
+    const norm = normalizeMissedNumber(phoneNumber);
+    if (!norm) return;
+    log('MISSED.add', { phoneNumber: norm });
+    setMissedCalls((prev) => {
+      const filtered = prev.filter((m) => m.phoneNumber !== norm);
+      const next: MissedCallEntry[] = [
+        { id: crypto.randomUUID(), phoneNumber: norm, at: new Date().toISOString() },
+        ...filtered,
+      ];
+      saveMissedCalls(next);
+      return next;
+    });
+    void pushEvent('missed', {
+      callId: crypto.randomUUID(),
+      consultant,
+      phoneNumber: norm,
+      direction: 'inbound',
+      status: 'missed',
+    });
+  };
+
+  const dismissMissedCall = (id: string) => {
+    setMissedCalls((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      saveMissedCalls(next);
+      return next;
+    });
+  };
+
+  const dismissMissedForNumber = (phoneNumber: string) => {
+    const norm = normalizeMissedNumber(phoneNumber);
+    setMissedCalls((prev) => {
+      const next = prev.filter((m) => m.phoneNumber !== norm);
+      saveMissedCalls(next);
+      return next;
+    });
+  };
+
+  const restoreOngoingAfterDeclinedRinging = () => {
+    const ongoing = ongoingCallRef.current;
+    ongoingCallRef.current = undefined;
+    setWillDisconnectOngoingCall(false);
+    willDisconnectOngoingCallRef.current = false;
+    setInboundRecordChoice(null);
+    ringingInboundAcceptedRef.current = false;
+    inboundAcceptAttemptedRef.current = false;
+
+    if (!ongoing) {
+      setIncomingNumber('');
+      inboundInviteRef.current = undefined;
+      return;
+    }
+
+    if (ongoing instanceof Inviter) {
+      activeSessionRef.current = ongoing;
+      inboundInviteRef.current = undefined;
+      setIncomingNumber('');
+      setStatus('Call active');
+      return;
+    }
+
+    if (ongoing instanceof Invitation) {
+      inboundInviteRef.current = ongoing;
+      const caller = ongoing.remoteIdentity.uri.user ?? 'unknown';
+      setIncomingNumber(caller);
+      setInboundSessionActive(true);
+      setInboundOnHold(false);
+      setStatus('Incoming call active');
+      bindMedia(ongoing);
+    }
+  };
+
+  const disconnectOngoingCalls = async () => {
+    const outbound = activeSessionRef.current;
+    if (outbound instanceof Inviter && outbound.state !== SessionState.Terminated) {
+      log('CALL_WAITING.disconnect.outbound');
+      if (outbound.state === SessionState.Established) {
+        await outbound.bye();
+      } else {
+        await outbound.cancel();
+      }
       if (outboundCallIdRef.current) {
-        void pushEvent('hold', {
+        void pushEvent('disconnected', {
           callId: outboundCallIdRef.current,
           consultant,
           phoneNumber: outboundActiveNumber,
-          direction: 'outbound',
-          status: 'on-hold',
+          status: 'disconnected',
         });
       }
+      activeSessionRef.current = undefined;
+      resetOutboundCallUi();
     }
+
+    const ongoing = ongoingCallRef.current;
+    if (
+      ongoing &&
+      ongoing !== outbound &&
+      ongoing.state === SessionState.Established
+    ) {
+      log('CALL_WAITING.disconnect.ongoing');
+      if (ongoing instanceof Invitation) {
+        const caller = ongoing.remoteIdentity.uri.user ?? 'unknown';
+        await ongoing.bye();
+        void pushEvent('disconnected', {
+          callId: inboundCallIdRef.current ?? crypto.randomUUID(),
+          consultant,
+          phoneNumber: caller,
+          status: 'disconnected',
+        });
+      } else {
+        await ongoing.bye();
+      }
+    }
+    ongoingCallRef.current = undefined;
+    remoteAudioRef.current?.pause();
   };
 
   const dismissInboundInvitation = async (invitation: Invitation) => {
@@ -426,9 +555,11 @@ function App() {
 
   function handleIncomingCall(invitation: Invitation) {
     const caller = invitation.remoteIdentity.uri.user ?? 'unknown';
-    const waiting = hasEstablishedOutbound();
+    const waiting = captureOngoingCallForWaiting();
+    willDisconnectOngoingCallRef.current = waiting;
     log('INBOUND.invite.received', { caller, consultant, callWaiting: waiting });
 
+    ringingInboundAcceptedRef.current = false;
     inboundInviteRef.current = invitation;
     setIncomingNumber(caller);
     setInboundRecordChoice(null);
@@ -439,9 +570,11 @@ function App() {
     setInboundDurationSeconds(0);
     setInboundHoldSeconds(0);
     inboundAcceptAttemptedRef.current = false;
-    setCallWaitingHint(waiting);
+    setWillDisconnectOngoingCall(waiting);
     setStatus(
-      waiting ? `Incoming call while on a call — ${caller}` : `Incoming call from ${caller}`,
+      waiting
+        ? `Incoming while on a call — ${caller} (accept ends current call)`
+        : `Incoming call from ${caller}`,
     );
 
     const callId = crypto.randomUUID();
@@ -463,10 +596,13 @@ function App() {
         state: SessionState[state],
       });
       if (state === SessionState.Established) {
+        ringingInboundAcceptedRef.current = true;
+        ongoingCallRef.current = undefined;
+        willDisconnectOngoingCallRef.current = false;
+        setWillDisconnectOngoingCall(false);
         setInboundSessionActive(true);
         setInboundOnHold(false);
         setInboundEstablishedAtMs(Date.now());
-        setCallWaitingHint(false);
         setStatus('Incoming call active');
         bindMedia(invitation);
         void pushEvent('oncall', {
@@ -479,21 +615,28 @@ function App() {
       }
       if (state === SessionState.Terminated) {
         stopAllCallSounds();
-        const held = heldSessionRef.current;
-        clearInboundUi();
-        if (held instanceof Inviter && outboundPhase === 'on-hold') {
-          setStatus('Other call on hold — tap Resume on outbound panel');
-        } else if (held instanceof Invitation) {
-          setStatus('Other call on hold — tap Resume on incoming panel');
+        const wasWaitingRing =
+          willDisconnectOngoingCallRef.current && !ringingInboundAcceptedRef.current;
+        if (wasWaitingRing) {
+          addMissedCall(caller);
+          inboundInviteRef.current = undefined;
+          restoreOngoingAfterDeclinedRinging();
+          void pushEvent('disconnected', {
+            callId,
+            consultant,
+            phoneNumber: caller,
+            status: 'missed',
+          });
         } else {
+          clearInboundUi();
           setStatus('Ready');
+          void pushEvent('disconnected', {
+            callId,
+            consultant,
+            phoneNumber: caller,
+            status: 'disconnected',
+          });
         }
-        void pushEvent('disconnected', {
-          callId,
-          consultant,
-          phoneNumber: caller,
-          status: 'disconnected',
-        });
       }
     });
   }
@@ -527,6 +670,7 @@ function App() {
     setMicStatus('ok');
     setMicDeviceLabel(mic.label ?? '');
     log('DIAL.preflight.mic.passed', { device: mic.label });
+    dismissMissedForNumber(cleanedDial);
 
     const target = UserAgent.makeURI(`sip:${cleanedDial}@${appConfig.sipDomain}`);
     if (!target) {
@@ -752,14 +896,14 @@ function App() {
       setMicStatus('ok');
       setMicDeviceLabel(mic.label ?? '');
 
-      if (callWaitingHint || hasEstablishedOutbound()) {
+      if (willDisconnectOngoingCall || ongoingCallRef.current) {
         try {
-          await holdOtherCallBeforeAnswer();
+          await disconnectOngoingCalls();
         } catch (err) {
-          logError('CALL_WAITING.hold.failed', {
+          logError('CALL_WAITING.disconnect.failed', {
             message: err instanceof Error ? err.message : String(err),
           });
-          setStatus('Could not hold other call — try again');
+          setStatus('Could not end other call — try again');
           inboundAcceptAttemptedRef.current = false;
           return;
         }
@@ -785,10 +929,28 @@ function App() {
     void runInboundAction(async () => {
       const invitation = inboundInviteRef.current;
       if (!invitation) return;
-      log('INBOUND.reject.click', { state: SessionState[invitation.state] });
-      await dismissInboundInvitation(invitation);
-      if (!heldSessionRef.current) {
-        setCallWaitingHint(false);
+      const caller = incomingNumber;
+      const wasWaiting = willDisconnectOngoingCall;
+      log('INBOUND.reject.click', { state: SessionState[invitation.state], wasWaiting });
+      try {
+        if (
+          invitation.state === SessionState.Initial ||
+          invitation.state === SessionState.Establishing
+        ) {
+          await invitation.reject();
+        }
+      } catch (err) {
+        logError('INBOUND.reject.failed', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+      if (wasWaiting) {
+        addMissedCall(caller);
+        inboundInviteRef.current = undefined;
+        restoreOngoingAfterDeclinedRinging();
+        setStatus('Missed call — ongoing call continues');
+      } else {
+        await dismissInboundInvitation(invitation);
       }
     });
   };
@@ -887,7 +1049,13 @@ function App() {
       log('HANGUP.outbound.cancel');
       await session.cancel();
     }
-    heldSessionRef.current = undefined;
+  };
+
+  const callBackMissed = (phoneNumber: string) => {
+    dismissMissedForNumber(phoneNumber);
+    setDialNumber(phoneNumber);
+    setStatus(`Ready to call back ${formatAuNumber(phoneNumber)} — tap Dial`);
+    log('MISSED.callback', { phoneNumber });
   };
 
   const hangup = async () => {
@@ -958,7 +1126,7 @@ function App() {
       recordChoice={inboundRecordChoice}
       isActive={inboundSessionActive}
       isOnHold={inboundOnHold}
-      callWaitingHint={callWaitingHint && !inboundSessionActive}
+      willDisconnectOngoingCall={willDisconnectOngoingCall && !inboundSessionActive}
       durationSeconds={inboundDurationSeconds}
       holdDurationSeconds={inboundHoldSeconds}
       actionInFlight={inboundActionInFlight}
@@ -973,10 +1141,19 @@ function App() {
     />
   );
 
+  const missedCallsPanel = (
+    <MissedCallsPanel
+      calls={missedCalls}
+      onCallBack={callBackMissed}
+      onDismiss={dismissMissedCall}
+    />
+  );
+
   if (appView === 'recordings') {
     return (
       <>
         <RecordingsPage onBack={() => setAppView('call')} />
+        {missedCallsPanel}
         {incomingCallOverlay}
         <audio ref={remoteAudioRef} autoPlay />
       </>
@@ -996,6 +1173,8 @@ function App() {
         <span className={`status-dot ${isRegistered ? 'online' : 'offline'}`} />
         <span className="status-text">{status}</span>
       </div>
+
+      {missedCallsPanel}
 
       <div className="mic-bar">
         <span className={`mic-dot mic-${micStatus}`} />

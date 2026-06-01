@@ -46,6 +46,7 @@ export const ASTERISK_EVENT_TYPES = [
   'oncall',
   'hold',
   'resume',
+  'missed',
   'disconnected',
   'failed',
   'DNDon',

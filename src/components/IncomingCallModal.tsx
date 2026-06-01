@@ -7,7 +7,7 @@ type IncomingCallModalProps = {
   recordChoice: boolean | null;
   isActive: boolean;
   isOnHold: boolean;
-  callWaitingHint: boolean;
+  willDisconnectOngoingCall: boolean;
   durationSeconds: number;
   holdDurationSeconds: number;
   actionInFlight: boolean;
@@ -34,7 +34,7 @@ export function IncomingCallModal({
   recordChoice,
   isActive,
   isOnHold,
-  callWaitingHint,
+  willDisconnectOngoingCall,
   durationSeconds,
   holdDurationSeconds,
   actionInFlight,
@@ -114,9 +114,9 @@ export function IncomingCallModal({
           </>
         ) : (
           <>
-            {callWaitingHint && (
-              <p className="incoming-call-waiting-hint">
-                Another call is active — answering will put it on hold.
+            {willDisconnectOngoingCall && (
+              <p className="incoming-call-disconnect-warning" role="alert">
+                You are on another call. If you accept, your ongoing call will be disconnected.
               </p>
             )}
             {recordChoice === null ? (
