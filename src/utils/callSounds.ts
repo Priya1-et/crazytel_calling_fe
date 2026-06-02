@@ -5,16 +5,23 @@ const BASE = '/sounds';
 
 const files = {
   ringback: `${BASE}/ringback.wav`,
+  incomingRing: `${BASE}/incoming-ring.wav`,
   busy: `${BASE}/busy.wav`,
   congestion: `${BASE}/congestion.wav`,
   disconnect: `${BASE}/disconnect.wav`,
 } as const;
 
 let ringbackEl: HTMLAudioElement | null = null;
+let incomingRingEl: HTMLAudioElement | null = null;
 let busyEl: HTMLAudioElement | null = null;
 let congestionEl: HTMLAudioElement | null = null;
 let disconnectEl: HTMLAudioElement | null = null;
 let statusStopTimer: ReturnType<typeof setTimeout> | null = null;
+let audioUnlocked = false;
+
+let syntheticCtx: AudioContext | null = null;
+let syntheticRingTimer: ReturnType<typeof setInterval> | null = null;
+let syntheticBurstTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getRingback(): HTMLAudioElement {
   if (!ringbackEl) {
@@ -23,6 +30,15 @@ function getRingback(): HTMLAudioElement {
   }
   ringbackEl.loop = true;
   return ringbackEl;
+}
+
+function getIncomingRing(): HTMLAudioElement {
+  if (!incomingRingEl) {
+    incomingRingEl = new Audio(files.incomingRing);
+    incomingRingEl.preload = 'auto';
+  }
+  incomingRingEl.loop = true;
+  return incomingRingEl;
 }
 
 function getBusy(): HTMLAudioElement {
@@ -62,18 +78,123 @@ function clearStatusTimer() {
   }
 }
 
-/** Stop ringback only (keeps any status sound logic separate). */
+function stopSyntheticIncomingRing(): void {
+  if (syntheticRingTimer !== null) {
+    clearInterval(syntheticRingTimer);
+    syntheticRingTimer = null;
+  }
+  if (syntheticBurstTimer !== null) {
+    clearTimeout(syntheticBurstTimer);
+    syntheticBurstTimer = null;
+  }
+  if (syntheticCtx) {
+    void syntheticCtx.close().catch(() => undefined);
+    syntheticCtx = null;
+  }
+}
+
+function playSyntheticBurst(): void {
+  const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctx) return;
+  if (!syntheticCtx || syntheticCtx.state === 'closed') {
+    syntheticCtx = new Ctx();
+  }
+  void syntheticCtx.resume().then(() => {
+    if (!syntheticCtx) return;
+    const t0 = syntheticCtx.currentTime;
+    const gain = syntheticCtx.createGain();
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02);
+    gain.gain.setValueAtTime(0.2, t0 + 0.9);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1);
+    gain.connect(syntheticCtx.destination);
+
+    for (const freq of [440, 480]) {
+      const osc = syntheticCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      osc.start(t0);
+      osc.stop(t0 + 1);
+    }
+  });
+}
+
+function startSyntheticIncomingRing(): void {
+  stopSyntheticIncomingRing();
+  playSyntheticBurst();
+  syntheticRingTimer = setInterval(playSyntheticBurst, 3000);
+}
+
+async function tryPlayLooping(audio: HTMLAudioElement): Promise<boolean> {
+  audio.loop = true;
+  audio.currentTime = 0;
+  try {
+    await audio.play();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Browsers block audio until a user gesture. Call after mic permission or first click.
+ */
+export async function unlockCallAudio(): Promise<void> {
+  if (audioUnlocked) return;
+  const clips = [getIncomingRing(), getRingback()];
+  for (const clip of clips) {
+    clip.volume = 0.001;
+    clip.loop = false;
+    try {
+      await clip.play();
+      clip.pause();
+      clip.currentTime = 0;
+      clip.volume = 1;
+      audioUnlocked = true;
+      return;
+    } catch {
+      clip.pause();
+      clip.currentTime = 0;
+      clip.volume = 1;
+    }
+  }
+}
+
+/** Stop ringback only (keeps incoming ring / status clips separate). */
 export function stopRingback(): void {
   pauseAndReset(ringbackEl);
 }
 
-/** Stop ringback + status clips + pending auto-stop timer. */
+/** Stop inbound ring tone (WAV or synthetic fallback). */
+export function stopIncomingRing(): void {
+  pauseAndReset(incomingRingEl);
+  stopSyntheticIncomingRing();
+}
+
+/** Stop ringback + incoming ring + status clips + pending auto-stop timer. */
 export function stopAllCallSounds(): void {
   clearStatusTimer();
   pauseAndReset(ringbackEl);
+  stopIncomingRing();
   pauseAndReset(busyEl);
   pauseAndReset(congestionEl);
   pauseAndReset(disconnectEl);
+}
+
+/**
+ * Inbound: looping ring while the incoming-call modal is shown.
+ * Tries incoming-ring.wav, then ringback.wav, then a built-in two-tone pattern.
+ */
+export function playIncomingRing(): void {
+  stopRingback();
+  stopIncomingRing();
+
+  void (async () => {
+    if (await tryPlayLooping(getIncomingRing())) return;
+    if (await tryPlayLooping(getRingback())) return;
+    startSyntheticIncomingRing();
+  })();
 }
 
 /**
@@ -81,6 +202,7 @@ export function stopAllCallSounds(): void {
  * Safe if file missing (play() rejects — ignored).
  */
 export function playRingback(): void {
+  stopIncomingRing();
   stopStatusClipsOnly();
   const r = getRingback();
   void r.play().catch(() => undefined);
@@ -109,6 +231,7 @@ function playClipOnce(audio: HTMLAudioElement, maxMs: number): void {
  */
 export function playOutboundTerminalSound(sipCode?: number): void {
   stopRingback();
+  stopIncomingRing();
   stopStatusClipsOnly();
 
   let clip: HTMLAudioElement;

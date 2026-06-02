@@ -14,7 +14,8 @@ Place **WAV** files here so the app can play ringback and status tones. Paths ar
 
 | File | When |
 |------|------|
-| `ringback.wav` | Outbound call ringing (loops until answered or end) |
+| `incoming-ring.wav` | **Inbound** call ringing in the browser (loops until accept/reject) |
+| `ringback.wav` | Outbound call ringing; also used as fallback if `incoming-ring.wav` is missing |
 | `busy.wav` | SIP 486 / 603 (busy / declined) |
 | `congestion.wav` | SIP 480 / 503 / 404 (unavailable / error) |
 | `disconnect.wav` | Normal hangup or other cases |
@@ -28,7 +29,9 @@ sudo cp /usr/share/asterisk/sounds/en/userm_busy.wav /path/to/fe/public/sounds/b
 # Or pick closest matches from /usr/share/asterisk/sounds/en/
 ```
 
-If a file is missing, the browser ignores failed `play()`; calls still work.
+If WAV files are missing, inbound calls still use a **built-in two-tone ring** in the browser. For a custom sound, add `incoming-ring.wav` (mono, ~2–4 s loop-friendly).
+
+**Autoplay:** Click anywhere on the page once (or use **Test Mic**) so the browser allows ring audio.
 
 ## Double ringback
 

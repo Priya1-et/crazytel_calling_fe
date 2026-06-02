@@ -22,10 +22,13 @@ import { normalizeDialInput } from './utils/normalizeDialInput';
 import { setSessionHold, setSessionMediaEnabled } from './utils/sessionHold';
 import { buildInboundAcceptHeaders, buildOutboundInviteHeaders } from './utils/sipHeaders';
 import {
+  playIncomingRing,
   playOutboundTerminalSound,
   playRingback,
   stopAllCallSounds,
+  stopIncomingRing,
   stopRingback,
+  unlockCallAudio,
 } from './utils/callSounds';
 import {
   ActiveOutboundCallPanel,
@@ -360,11 +363,22 @@ function App() {
     void testMicrophone().then((result) => {
       setMicStatus(result.ok ? 'ok' : 'fail');
       if (result.ok && result.label) setMicDeviceLabel(result.label);
+      if (result.ok) void unlockCallAudio();
     });
+    const unlockOnGesture = () => {
+      void unlockCallAudio();
+    };
+    document.addEventListener('click', unlockOnGesture);
+    document.addEventListener('keydown', unlockOnGesture);
+    return () => {
+      document.removeEventListener('click', unlockOnGesture);
+      document.removeEventListener('keydown', unlockOnGesture);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const clearInboundUi = () => {
+    stopIncomingRing();
     inboundInviteRef.current = undefined;
     setInboundInviteReady(false);
     setIncomingNumber('');
@@ -456,6 +470,7 @@ function App() {
       willDisconnectOngoingCallRef.current = waiting;
       setInboundInviteReady(false);
       setStatus(`Caller waiting — ${phone} (answer when your phone rings)`);
+      playIncomingRing();
       log('WAITING.sync.api', { phoneNumber: phone });
     } catch (err) {
       logError('WAITING.sync.api.failed', {
@@ -640,6 +655,8 @@ function App() {
       status: 'ringing',
     });
 
+    playIncomingRing();
+
     invitation.stateChange.addListener((state) => {
       log('INBOUND.session.state', {
         callId,
@@ -647,6 +664,7 @@ function App() {
         state: SessionState[state],
       });
       if (state === SessionState.Established) {
+        stopIncomingRing();
         ringingInboundAcceptedRef.current = true;
         ongoingCallRef.current = undefined;
         willDisconnectOngoingCallRef.current = false;
@@ -981,6 +999,7 @@ function App() {
       const invitation = inboundInviteRef.current;
       if (!invitation) {
         const caller = incomingNumber;
+        stopIncomingRing();
         clearInboundUi();
         if (caller && (willDisconnectOngoingCall || ongoingCallRef.current)) {
           addMissedCall(caller);
@@ -994,6 +1013,7 @@ function App() {
       const caller = incomingNumber;
       const wasWaiting = willDisconnectOngoingCall;
       log('INBOUND.reject.click', { state: SessionState[invitation.state], wasWaiting });
+      stopIncomingRing();
       try {
         if (
           invitation.state === SessionState.Initial ||
