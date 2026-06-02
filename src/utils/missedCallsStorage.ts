@@ -24,3 +24,26 @@ export function saveMissedCalls(entries: MissedCallEntry[]): void {
 export function normalizeMissedNumber(phone: string): string {
   return phone.replace(/\D/g, '');
 }
+
+/** Merge API missed logs with localStorage entries (by phone, newest first). */
+export function mergeMissedCalls(
+  local: MissedCallEntry[],
+  apiRows: Array<{ phoneNumber: string; startTime: string }>,
+): MissedCallEntry[] {
+  const byPhone = new Map<string, MissedCallEntry>();
+  for (const row of apiRows) {
+    const phoneNumber = normalizeMissedNumber(row.phoneNumber);
+    if (!phoneNumber) continue;
+    byPhone.set(phoneNumber, {
+      id: `api-${phoneNumber}-${row.startTime}`,
+      phoneNumber,
+      at: row.startTime,
+    });
+  }
+  for (const entry of local) {
+    if (!byPhone.has(entry.phoneNumber)) {
+      byPhone.set(entry.phoneNumber, entry);
+    }
+  }
+  return [...byPhone.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}

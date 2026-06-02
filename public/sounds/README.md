@@ -1,4 +1,14 @@
-# Call UI sounds (optional)
+# Sounds (optional)
+
+## Asterisk — Venus busy queue
+
+| File | Purpose |
+|------|---------|
+| `consultant_busy.wav` | Played to PSTN callers when Venus is on another call (deploy copies to `/var/lib/asterisk/sounds/custom/consultant-busy.wav`) |
+
+Mono **8 kHz** WAV recommended.
+
+## Browser UI tones
 
 Place **WAV** files here so the app can play ringback and status tones. Paths are served as `/sounds/<filename>`.
 

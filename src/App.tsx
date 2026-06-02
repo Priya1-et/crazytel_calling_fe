@@ -36,6 +36,7 @@ import { MissedCallsPanel } from './components/MissedCallsPanel';
 import { RecordCallModal } from './components/RecordCallModal';
 import {
   loadMissedCalls,
+  mergeMissedCalls,
   normalizeMissedNumber,
   saveMissedCalls,
   type MissedCallEntry,
@@ -305,6 +306,7 @@ function App() {
           if (state === RegistererState.Registered) {
             setIsRegistered(true);
             setStatus(`Socket connected, registered ${consultant}`);
+            void syncMissedCallsFromApi();
           }
           if (state === RegistererState.Unregistered) {
             setIsRegistered(false);
@@ -412,6 +414,25 @@ function App() {
       return true;
     }
     return false;
+  };
+
+  const syncMissedCallsFromApi = async () => {
+    const url = `${appConfig.apiBaseUrl}/v1/calls?consultant=${encodeURIComponent(consultant)}&status=missed&limit=50`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const rows = (await res.json()) as Array<{ phoneNumber: string; startTime: string }>;
+      setMissedCalls((prev) => {
+        const merged = mergeMissedCalls(prev, rows);
+        saveMissedCalls(merged);
+        return merged;
+      });
+      log('MISSED.sync.api', { count: rows.length });
+    } catch (err) {
+      logError('MISSED.sync.api.failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const addMissedCall = (phoneNumber: string) => {
