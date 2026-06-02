@@ -66,6 +66,7 @@ function App() {
   const [inboundHoldSeconds, setInboundHoldSeconds] = useState(0);
   const [inboundHoldActionInFlight, setInboundHoldActionInFlight] = useState(false);
   const [willDisconnectOngoingCall, setWillDisconnectOngoingCall] = useState(false);
+  const [inboundInviteReady, setInboundInviteReady] = useState(false);
   const [missedCalls, setMissedCalls] = useState<MissedCallEntry[]>(() => loadMissedCalls());
   const [outboundPhase, setOutboundPhase] = useState<OutboundCallPhase>('idle');
   const [outboundActiveNumber, setOutboundActiveNumber] = useState('');
@@ -365,6 +366,7 @@ function App() {
 
   const clearInboundUi = () => {
     inboundInviteRef.current = undefined;
+    setInboundInviteReady(false);
     setIncomingNumber('');
     setInboundRecordChoice(null);
     setInboundSessionActive(false);
@@ -430,6 +432,33 @@ function App() {
       log('MISSED.sync.api', { count: rows.length });
     } catch (err) {
       logError('MISSED.sync.api.failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const syncWaitingCallFromApi = async () => {
+    if (inboundInviteRef.current?.state === SessionState.Established) return;
+    const url = `${appConfig.apiBaseUrl}/v1/calls?consultant=${encodeURIComponent(consultant)}&status=waiting&limit=1`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const rows = (await res.json()) as Array<{ phoneNumber: string }>;
+      if (!rows.length) return;
+      if (!hasOngoingCall() && outboundPhase === 'idle' && !inboundSessionActive) return;
+
+      const phone = normalizeMissedNumber(rows[0].phoneNumber) || rows[0].phoneNumber;
+      if (inboundInviteRef.current) return;
+
+      const waiting = captureOngoingCallForWaiting();
+      setIncomingNumber(phone);
+      setWillDisconnectOngoingCall(waiting);
+      willDisconnectOngoingCallRef.current = waiting;
+      setInboundInviteReady(false);
+      setStatus(`Caller waiting — ${phone} (answer when your phone rings)`);
+      log('WAITING.sync.api', { phoneNumber: phone });
+    } catch (err) {
+      logError('WAITING.sync.api.failed', {
         message: err instanceof Error ? err.message : String(err),
       });
     }
@@ -582,6 +611,7 @@ function App() {
 
     ringingInboundAcceptedRef.current = false;
     inboundInviteRef.current = invitation;
+    setInboundInviteReady(true);
     setIncomingNumber(caller);
     setInboundRecordChoice(null);
     setInboundSessionActive(false);
@@ -949,7 +979,18 @@ function App() {
   const rejectInbound = () => {
     void runInboundAction(async () => {
       const invitation = inboundInviteRef.current;
-      if (!invitation) return;
+      if (!invitation) {
+        const caller = incomingNumber;
+        clearInboundUi();
+        if (caller && (willDisconnectOngoingCall || ongoingCallRef.current)) {
+          addMissedCall(caller);
+          restoreOngoingAfterDeclinedRinging();
+          setStatus('Missed call — ongoing call continues');
+        } else {
+          setStatus('Ready');
+        }
+        return;
+      }
       const caller = incomingNumber;
       const wasWaiting = willDisconnectOngoingCall;
       log('INBOUND.reject.click', { state: SessionState[invitation.state], wasWaiting });
@@ -1137,6 +1178,15 @@ function App() {
     return () => window.clearInterval(id);
   }, [inboundOnHold, inboundHoldStartedAtMs]);
 
+  useEffect(() => {
+    if (!isRegistered) return;
+    const id = window.setInterval(() => {
+      void syncMissedCallsFromApi();
+      void syncWaitingCallFromApi();
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [isRegistered, consultant]);
+
   const micDisplayLabel =
     micStatus === 'ok' ? (micDeviceLabel || 'Default') : micStatus === 'fail' ? 'Not available' : 'Checking...';
 
@@ -1148,6 +1198,7 @@ function App() {
       isActive={inboundSessionActive}
       isOnHold={inboundOnHold}
       willDisconnectOngoingCall={willDisconnectOngoingCall && !inboundSessionActive}
+      sipInvitePending={!inboundInviteReady && !inboundSessionActive}
       durationSeconds={inboundDurationSeconds}
       holdDurationSeconds={inboundHoldSeconds}
       actionInFlight={inboundActionInFlight}

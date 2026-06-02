@@ -8,6 +8,7 @@ type IncomingCallModalProps = {
   isActive: boolean;
   isOnHold: boolean;
   willDisconnectOngoingCall: boolean;
+  sipInvitePending?: boolean;
   durationSeconds: number;
   holdDurationSeconds: number;
   actionInFlight: boolean;
@@ -35,6 +36,7 @@ export function IncomingCallModal({
   isActive,
   isOnHold,
   willDisconnectOngoingCall,
+  sipInvitePending = false,
   durationSeconds,
   holdDurationSeconds,
   actionInFlight,
@@ -119,6 +121,11 @@ export function IncomingCallModal({
                 You are on another call. If you accept, your ongoing call will be disconnected.
               </p>
             )}
+            {sipInvitePending && (
+              <p className="incoming-call-message incoming-call-message--hold">
+                Caller is on hold with the announcement — your phone will ring in a moment.
+              </p>
+            )}
             {recordChoice === null ? (
               <>
                 <p className="incoming-call-message">
@@ -144,11 +151,16 @@ export function IncomingCallModal({
                 type="button"
                 className="btn-incoming-accept"
                 onClick={onAccept}
-                disabled={recordChoice === null || actionInFlight}
+                disabled={sipInvitePending || recordChoice === null || actionInFlight}
               >
-                {actionInFlight ? 'Accepting…' : 'Accept'}
+                {actionInFlight ? 'Accepting…' : sipInvitePending ? 'Ringing…' : 'Accept'}
               </button>
-              <button type="button" className="btn-incoming-reject" onClick={onReject} disabled={actionInFlight}>
+              <button
+                type="button"
+                className="btn-incoming-reject"
+                onClick={onReject}
+                disabled={actionInFlight}
+              >
                 Reject
               </button>
             </div>
