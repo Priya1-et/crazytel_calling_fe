@@ -22,6 +22,9 @@ let audioUnlocked = false;
 let syntheticCtx: AudioContext | null = null;
 let syntheticRingTimer: ReturnType<typeof setInterval> | null = null;
 let syntheticBurstTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumps on stop — in-flight async playIncomingRing must not restart audio after answer. */
+let incomingRingGeneration = 0;
+let inboundRingSessionActive = false;
 
 function getRingback(): HTMLAudioElement {
   if (!ringbackEl) {
@@ -168,8 +171,20 @@ export function stopRingback(): void {
 
 /** Stop inbound ring tone (WAV or synthetic fallback). */
 export function stopIncomingRing(): void {
+  incomingRingGeneration += 1;
+  if (inboundRingSessionActive) {
+    pauseAndReset(ringbackEl);
+  }
+  inboundRingSessionActive = false;
   pauseAndReset(incomingRingEl);
   stopSyntheticIncomingRing();
+}
+
+export function isIncomingRingPlaying(): boolean {
+  if (!inboundRingSessionActive) return false;
+  if (syntheticRingTimer !== null) return true;
+  if (incomingRingEl && !incomingRingEl.paused) return true;
+  return Boolean(ringbackEl && !ringbackEl.paused);
 }
 
 /** Stop ringback + incoming ring + status clips + pending auto-stop timer. */
@@ -188,11 +203,24 @@ export function stopAllCallSounds(): void {
  */
 export function playIncomingRing(): void {
   stopRingback();
-  stopIncomingRing();
+  incomingRingGeneration += 1;
+  const gen = incomingRingGeneration;
+  inboundRingSessionActive = true;
+  pauseAndReset(incomingRingEl);
+  stopSyntheticIncomingRing();
 
   void (async () => {
-    if (await tryPlayLooping(getIncomingRing())) return;
-    if (await tryPlayLooping(getRingback())) return;
+    const incoming = getIncomingRing();
+    incoming.volume = 0.65;
+    if (gen !== incomingRingGeneration) return;
+    if (await tryPlayLooping(incoming)) return;
+
+    const fallback = getRingback();
+    fallback.volume = 0.65;
+    if (gen !== incomingRingGeneration) return;
+    if (await tryPlayLooping(fallback)) return;
+
+    if (gen !== incomingRingGeneration) return;
     startSyntheticIncomingRing();
   })();
 }

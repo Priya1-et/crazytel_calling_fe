@@ -22,6 +22,7 @@ import { normalizeDialInput } from './utils/normalizeDialInput';
 import { setSessionHold, setSessionMediaEnabled } from './utils/sessionHold';
 import { buildInboundAcceptHeaders, buildOutboundInviteHeaders } from './utils/sipHeaders';
 import {
+  isIncomingRingPlaying,
   playIncomingRing,
   playOutboundTerminalSound,
   playRingback,
@@ -96,8 +97,22 @@ function App() {
   const ongoingCallRef = useRef<Session | undefined>(undefined);
   const ringingInboundAcceptedRef = useRef(false);
   const willDisconnectOngoingCallRef = useRef(false);
+  /** Caller we are currently ringing for — avoids poll/SIP double-start and restart after answer */
+  const incomingRingCallerRef = useRef<string | null>(null);
 
   const consultant = appConfig.sipUsername;
+
+  const stopIncomingRingForCaller = () => {
+    incomingRingCallerRef.current = null;
+    stopIncomingRing();
+  };
+
+  const startIncomingRingForCaller = (caller: string) => {
+    const norm = normalizeMissedNumber(caller) || caller;
+    if (incomingRingCallerRef.current === norm && isIncomingRingPlaying()) return;
+    incomingRingCallerRef.current = norm;
+    playIncomingRing();
+  };
 
   const log = (step: string, data?: unknown) => {
     if (data !== undefined) {
@@ -378,7 +393,7 @@ function App() {
   }, []);
 
   const clearInboundUi = () => {
-    stopIncomingRing();
+    stopIncomingRingForCaller();
     inboundInviteRef.current = undefined;
     setInboundInviteReady(false);
     setIncomingNumber('');
@@ -452,17 +467,24 @@ function App() {
   };
 
   const syncWaitingCallFromApi = async () => {
+    // Never poll-driven UI/ring while on an active inbound call (answered).
+    if (inboundSessionActive) return;
     if (inboundInviteRef.current?.state === SessionState.Established) return;
+
     const url = `${appConfig.apiBaseUrl}/v1/calls?consultant=${encodeURIComponent(consultant)}&status=waiting&limit=1`;
     try {
       const res = await fetch(url);
       if (!res.ok) return;
       const rows = (await res.json()) as Array<{ phoneNumber: string }>;
       if (!rows.length) return;
-      if (!hasOngoingCall() && outboundPhase === 'idle' && !inboundSessionActive) return;
+      if (!hasOngoingCall() && outboundPhase === 'idle') return;
 
       const phone = normalizeMissedNumber(rows[0].phoneNumber) || rows[0].phoneNumber;
-      if (inboundInviteRef.current) return;
+      const inv = inboundInviteRef.current;
+      if (inv) {
+        const inviteCaller = inv.remoteIdentity.uri.user ?? '';
+        if (normalizeMissedNumber(inviteCaller) === phone || inviteCaller === phone) return;
+      }
 
       const waiting = captureOngoingCallForWaiting();
       setIncomingNumber(phone);
@@ -470,7 +492,7 @@ function App() {
       willDisconnectOngoingCallRef.current = waiting;
       setInboundInviteReady(false);
       setStatus(`Caller waiting — ${phone} (answer when your phone rings)`);
-      playIncomingRing();
+      // Ring only from SIP INVITE; poll updates banner text only (no playIncomingRing).
       log('WAITING.sync.api', { phoneNumber: phone });
     } catch (err) {
       logError('WAITING.sync.api.failed', {
@@ -655,7 +677,7 @@ function App() {
       status: 'ringing',
     });
 
-    playIncomingRing();
+    startIncomingRingForCaller(caller);
 
     invitation.stateChange.addListener((state) => {
       log('INBOUND.session.state', {
@@ -664,7 +686,7 @@ function App() {
         state: SessionState[state],
       });
       if (state === SessionState.Established) {
-        stopIncomingRing();
+        stopIncomingRingForCaller();
         ringingInboundAcceptedRef.current = true;
         ongoingCallRef.current = undefined;
         willDisconnectOngoingCallRef.current = false;
@@ -946,12 +968,23 @@ function App() {
         return;
       }
       if (invitation.state === SessionState.Established) {
+        stopIncomingRingForCaller();
         setInboundSessionActive(true);
         return;
       }
       if (invitation.state === SessionState.Terminated) return;
       if (inboundAcceptAttemptedRef.current) return;
       inboundAcceptAttemptedRef.current = true;
+
+      stopIncomingRingForCaller();
+      const caller = invitation.remoteIdentity.uri.user ?? incomingNumber;
+      void pushEvent('oncall', {
+        callId: inboundCallIdRef.current ?? crypto.randomUUID(),
+        consultant,
+        phoneNumber: caller,
+        direction: 'inbound',
+        status: 'answered',
+      });
 
       setStatus('Checking microphone…');
       const mic = await testMicrophone();
@@ -999,7 +1032,7 @@ function App() {
       const invitation = inboundInviteRef.current;
       if (!invitation) {
         const caller = incomingNumber;
-        stopIncomingRing();
+        stopIncomingRingForCaller();
         clearInboundUi();
         if (caller && (willDisconnectOngoingCall || ongoingCallRef.current)) {
           addMissedCall(caller);
@@ -1013,7 +1046,7 @@ function App() {
       const caller = incomingNumber;
       const wasWaiting = willDisconnectOngoingCall;
       log('INBOUND.reject.click', { state: SessionState[invitation.state], wasWaiting });
-      stopIncomingRing();
+      stopIncomingRingForCaller();
       try {
         if (
           invitation.state === SessionState.Initial ||
@@ -1202,10 +1235,12 @@ function App() {
     if (!isRegistered) return;
     const id = window.setInterval(() => {
       void syncMissedCallsFromApi();
-      void syncWaitingCallFromApi();
-    }, 4000);
+      if (!inboundSessionActive) {
+        void syncWaitingCallFromApi();
+      }
+    }, 15000);
     return () => window.clearInterval(id);
-  }, [isRegistered, consultant]);
+  }, [isRegistered, consultant, inboundSessionActive]);
 
   const micDisplayLabel =
     micStatus === 'ok' ? (micDeviceLabel || 'Default') : micStatus === 'fail' ? 'Not available' : 'Checking...';
