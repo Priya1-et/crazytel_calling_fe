@@ -1245,6 +1245,15 @@ function App() {
   const micDisplayLabel =
     micStatus === 'ok' ? (micDeviceLabel || 'Default') : micStatus === 'fail' ? 'Not available' : 'Checking...';
 
+  const sipStatusShort = isRegistered
+    ? `Ready · ${consultant}`
+    : status.length > 28
+      ? `${status.slice(0, 26)}…`
+      : status;
+
+  const micStatusShort =
+    micStatus === 'ok' ? `OK · ${micDisplayLabel}` : micStatus === 'fail' ? micDisplayLabel : 'Checking…';
+
   const incomingCallOverlay = (
     <IncomingCallModal
       open={showIncomingCallModal}
@@ -1295,30 +1304,31 @@ function App() {
         </button>
       </div>
 
-      <div className="status-bar">
-        <span className={`status-dot ${isRegistered ? 'online' : 'offline'}`} />
-        <span className="status-text">{status}</span>
+      <div className="system-status" title={status}>
+        <div className="system-status-item">
+          <span className={`status-dot ${isRegistered ? 'online' : 'offline'}`} aria-hidden />
+          <span className="system-status-key">SIP</span>
+          <span className="system-status-val">{sipStatusShort}</span>
+        </div>
+        <div className="system-status-item system-status-item--mic">
+          <span className={`mic-dot mic-${micStatus}`} aria-hidden />
+          <span className="system-status-key">Mic</span>
+          <span className="system-status-val">{micStatusShort}</span>
+          <button
+            type="button"
+            className="btn-test-mic"
+            onClick={async () => {
+              const r = await testMicrophone();
+              setMicStatus(r.ok ? 'ok' : 'fail');
+              setMicDeviceLabel(r.ok ? (r.label ?? '') : (r.error ?? ''));
+            }}
+          >
+            Test
+          </button>
+        </div>
       </div>
 
       {missedCallsPanel}
-
-      <div className="mic-bar">
-        <span className={`mic-dot mic-${micStatus}`} />
-        <span className="mic-text">
-          Microphone: {micStatus === 'ok' ? `OK (${micDisplayLabel})` : micDisplayLabel}
-        </span>
-        <button
-          type="button"
-          className="btn-test-mic"
-          onClick={async () => {
-            const r = await testMicrophone();
-            setMicStatus(r.ok ? 'ok' : 'fail');
-            setMicDeviceLabel(r.ok ? (r.label ?? '') : (r.error ?? ''));
-          }}
-        >
-          Test Mic
-        </button>
-      </div>
 
       {showOutboundCallPanel ? (
         <ActiveOutboundCallPanel
