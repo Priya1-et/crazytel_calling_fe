@@ -32,35 +32,39 @@ export function ActiveOutboundCallPanel({
   const formatted = formatAuNumber(dialNumber);
   const canHold = phase === 'active';
   const isOnHold = phase === 'on-hold';
+  const isConnecting = phase === 'connecting';
 
   return (
-    <section className="card card-outbound-active" aria-live="polite">
-      <h2>Active call</h2>
-      <p className="outbound-active-number">{formatted}</p>
+    <section
+      className={`outbound-call-card ${isConnecting ? 'outbound-call-card--connecting' : ''} ${isOnHold ? 'outbound-call-card--hold' : ''}`}
+      aria-live="polite"
+      aria-label="Active outbound call"
+    >
+      <p className="outbound-call-label">Outgoing call</p>
+      <p className="outbound-call-number">{formatted}</p>
 
-      {phase === 'connecting' && (
-        <p className="outbound-active-status outbound-active-status--connecting">Connecting…</p>
+      {isConnecting && (
+        <p className="outbound-call-status outbound-call-status--connecting">Connecting…</p>
       )}
 
       {phase === 'active' && (
-        <p className="outbound-active-status">
-          Ongoing call · <span className="outbound-active-timer">{formatCallDuration(callDurationSeconds)}</span>
-        </p>
+        <>
+          <p className="outbound-call-status">Ongoing call</p>
+          <p className="outbound-call-timer">{formatCallDuration(callDurationSeconds)}</p>
+        </>
       )}
 
       {isOnHold && (
         <>
-          <p className="outbound-active-status outbound-active-status--hold">Call on hold</p>
-          <p className="outbound-active-hold-timer">
-            On hold · <span>{formatCallDuration(holdDurationSeconds)}</span>
+          <p className="outbound-call-status outbound-call-status--hold">Call on hold</p>
+          <p className="outbound-call-timer outbound-call-timer--hold">
+            On hold · {formatCallDuration(holdDurationSeconds)}
           </p>
-          <p className="outbound-active-hold-hint">
-            Caller hears hold music while you are on hold.
-          </p>
+          <p className="outbound-call-hint">Caller hears hold music while you are on hold.</p>
         </>
       )}
 
-      <div className="outbound-active-actions">
+      <div className="outbound-call-actions">
         {canHold && (
           <button
             type="button"
@@ -85,9 +89,9 @@ export function ActiveOutboundCallPanel({
           type="button"
           className="btn-outbound-hangup"
           onClick={onHangup}
-          disabled={holdActionInFlight}
+          disabled={holdActionInFlight && !isConnecting}
         >
-          Hangup
+          End call
         </button>
       </div>
     </section>

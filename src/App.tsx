@@ -1280,7 +1280,6 @@ function App() {
     return (
       <>
         <RecordingsPage onBack={() => setAppView('call')} />
-        {missedCallsPanel}
         {incomingCallOverlay}
         <audio ref={remoteAudioRef} autoPlay />
       </>
@@ -1321,79 +1320,84 @@ function App() {
         </button>
       </div>
 
-      <section className="card">
-        <h2>Make a Call</h2>
+      {showOutboundCallPanel ? (
+        <ActiveOutboundCallPanel
+          phase={outboundPhase}
+          dialNumber={outboundActiveNumber}
+          callDurationSeconds={outboundDurationSeconds}
+          holdDurationSeconds={outboundHoldSeconds}
+          holdActionInFlight={outboundHoldActionInFlight}
+          onHold={holdOutbound}
+          onResume={resumeOutbound}
+          onHangup={() => void hangupOutbound()}
+        />
+      ) : (
+        <section className="card card-dial">
+          <h2>Make a Call</h2>
 
-        <label>
-          Call from
-          <div className="dropdown" ref={outgoingMenuRef}>
-            <button
-              type="button"
-              className="dropdown-trigger"
-              onClick={() => setIsOutgoingMenuOpen((open) => !open)}
+          <label>
+            Call from
+            <div className="dropdown" ref={outgoingMenuRef}>
+              <button
+                type="button"
+                className="dropdown-trigger"
+                onClick={() => setIsOutgoingMenuOpen((open) => !open)}
+                disabled={isOnCall}
+              >
+                <span>{formatAuNumber(outgoingNumber)}</span>
+                <span className="dropdown-caret">▾</span>
+              </button>
+              {isOutgoingMenuOpen && (
+                <ul className="dropdown-menu">
+                  {outgoingNumbers.map((num) => (
+                    <li key={num}>
+                      <button
+                        type="button"
+                        className={`dropdown-item ${num === outgoingNumber ? 'selected' : ''}`}
+                        onClick={() => {
+                          setOutgoingNumber(num);
+                          setIsOutgoingMenuOpen(false);
+                        }}
+                      >
+                        {formatAuNumber(num)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </label>
+
+          <label>
+            Call to
+            <input
+              type="tel"
+              placeholder={DIAL_PLACEHOLDER}
+              value={dialNumber}
+              onChange={(e) => setDialNumber(e.target.value)}
               disabled={isOnCall}
+            />
+          </label>
+
+          <div className="actions">
+            <button
+              className="btn-dial"
+              onClick={dial}
+              disabled={!isRegistered || isOnCall || !dialNumber.trim()}
             >
-              <span>{formatAuNumber(outgoingNumber)}</span>
-              <span className="dropdown-caret">▾</span>
+              Dial
             </button>
-            {isOutgoingMenuOpen && (
-              <ul className="dropdown-menu">
-                {outgoingNumbers.map((num) => (
-                  <li key={num}>
-                    <button
-                      type="button"
-                      className={`dropdown-item ${num === outgoingNumber ? 'selected' : ''}`}
-                      onClick={() => {
-                        setOutgoingNumber(num);
-                        setIsOutgoingMenuOpen(false);
-                      }}
-                    >
-                      {formatAuNumber(num)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </label>
-
-        <label>
-          Call to
-          <input
-            type="tel"
-            placeholder={DIAL_PLACEHOLDER}
-            value={dialNumber}
-            onChange={(e) => setDialNumber(e.target.value)}
-            disabled={isOnCall}
-          />
-        </label>
-
-        <div className="actions">
-          <button
-            className="btn-dial"
-            onClick={dial}
-            disabled={!isRegistered || isOnCall || !dialNumber.trim()}
-          >
-            Dial
-          </button>
-          {!showOutboundCallPanel && (
-            <button className="btn-hangup" onClick={() => void hangup()} disabled={!isOnCall}>
+            <button
+              className="btn-hangup btn-hangup--secondary"
+              onClick={() => void hangup()}
+              disabled={!isOnCall}
+              aria-hidden={!isOnCall}
+            >
               Hangup
             </button>
-          )}
-        </div>
-      </section>
-
-      <ActiveOutboundCallPanel
-        phase={outboundPhase}
-        dialNumber={outboundActiveNumber}
-        callDurationSeconds={outboundDurationSeconds}
-      holdDurationSeconds={outboundHoldSeconds}
-      holdActionInFlight={outboundHoldActionInFlight}
-      onHold={holdOutbound}
-      onResume={resumeOutbound}
-        onHangup={() => void hangupOutbound()}
-      />
+          </div>
+        </section>
+      )}
 
       <RecordCallModal
         open={showOutboundRecordModal}

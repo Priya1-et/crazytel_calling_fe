@@ -1,11 +1,14 @@
 .app {
-  max-width: 480px;
+  max-width: 440px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 24px 20px 32px;
   display: grid;
-  gap: 16px;
+  gap: 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   text-align: left;
+  background: #080c18;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .app h1 {
@@ -110,8 +113,14 @@
 
 .card h2 {
   margin: 0 0 16px;
-  font-size: 1.1rem;
-  color: #16265c;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #c6d0f5;
+  letter-spacing: 0.02em;
+}
+
+.card-dial .actions .btn-hangup--secondary:not(:disabled) {
+  display: none;
 }
 
 .card-incoming {
@@ -254,6 +263,10 @@ button:disabled {
   background: #f87171;
   color: #ffffff;
   flex: 1;
+}
+
+.btn-hangup--secondary:disabled {
+  display: none;
 }
 
 .btn-accept {

@@ -5,11 +5,14 @@ import {
   type RecordingDirection,
   type RecordingListItem,
 } from '../api/recordings';
+import { formatAuNumber } from '../utils/formatAuNumber';
 import './RecordingsPage.css';
 
 type RecordingsPageProps = {
   onBack: () => void;
 };
+
+type FilterValue = 'all' | RecordingDirection;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,23 +22,46 @@ function formatBytes(bytes: number): string {
 
 function formatWhen(iso: string): string {
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
   } catch {
     return iso;
   }
 }
 
 function formatDuration(seconds?: number): string | null {
-  if (seconds === undefined || seconds < 0) {
-    return null;
-  }
+  if (seconds === undefined || seconds < 0) return null;
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+/** Try to show a friendly number from Asterisk filename (YYYYMMDD-HHMMSS-number-unique.wav). */
+function displayTitle(filename: string): string {
+  const base = filename.replace(/\.wav$/i, '');
+  const parts = base.split('-');
+  if (parts.length >= 3) {
+    const maybeNumber = parts.slice(2, -1).join('-').replace(/^-+|-+$/g, '');
+    if (maybeNumber && /\d/.test(maybeNumber)) {
+      const digits = maybeNumber.replace(/\D/g, '');
+      if (digits.length >= 8) {
+        return formatAuNumber(digits) || maybeNumber;
+      }
+    }
+  }
+  return base;
+}
+
+const FILTERS: { value: FilterValue; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'outgoing', label: 'Outgoing' },
+  { value: 'incoming', label: 'Incoming' },
+];
+
 export function RecordingsPage({ onBack }: RecordingsPageProps) {
-  const [filter, setFilter] = useState<'all' | RecordingDirection>('all');
+  const [filter, setFilter] = useState<FilterValue>('all');
   const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,52 +87,83 @@ export function RecordingsPage({ onBack }: RecordingsPageProps) {
   return (
     <main className="recordings-page">
       <header className="recordings-header">
-        <button type="button" className="btn-back" onClick={onBack}>
-          ← Back to calls
+        <button type="button" className="recordings-btn-back" onClick={onBack}>
+          ← Back to console
         </button>
-        <h1>Call recordings</h1>
+        <h1 className="recordings-title">Call recordings</h1>
+        <p className="recordings-subtitle">Listen to saved incoming and outgoing calls</p>
       </header>
 
-      <div className="recordings-filters">
-        <label>
-          Show
-          <select value={filter} onChange={(e) => setFilter(e.target.value as 'all' | RecordingDirection)}>
-            <option value="all">All</option>
-            <option value="outgoing">Outgoing</option>
-            <option value="incoming">Incoming</option>
-          </select>
-        </label>
-        <button type="button" className="btn-refresh" onClick={() => void load()}>
+      <div className="recordings-toolbar">
+        <div className="recordings-filters" role="tablist" aria-label="Filter recordings">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              role="tab"
+              aria-selected={filter === f.value}
+              className={`recordings-filter-pill ${filter === f.value ? 'recordings-filter-pill--active' : ''}`}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="recordings-btn-refresh" onClick={() => void load()}>
           Refresh
         </button>
       </div>
 
-      {loading && <p className="recordings-muted">Loading…</p>}
-      {error && <p className="recordings-error">{error}</p>}
+      {loading && (
+        <div className="recordings-state recordings-state--loading">
+          <span className="recordings-spinner" aria-hidden />
+          Loading recordings…
+        </div>
+      )}
+      {error && (
+        <div className="recordings-state recordings-state--error" role="alert">
+          {error}
+        </div>
+      )}
       {!loading && !error && recordings.length === 0 && (
-        <p className="recordings-muted">No recordings yet. Record a call using the prompt before dial or accept.</p>
+        <div className="recordings-state recordings-state--empty">
+          <p>No recordings yet</p>
+          <span>Calls are saved automatically when answered.</span>
+        </div>
       )}
 
-      <ul className="recordings-list">
-        {recordings.map((rec) => {
-          const durationLabel = formatDuration(rec.durationSeconds);
-          return (
-          <li key={rec.id} className="recordings-item">
-            <div className="recordings-meta">
-              <span className={`recordings-badge recordings-badge-${rec.direction}`}>
-                {rec.direction}
-              </span>
-              <span className="recordings-name">{rec.filename}</span>
-              <span className="recordings-sub">
-                {formatWhen(rec.createdAt)} · {formatBytes(rec.sizeBytes)}
-                {durationLabel ? ` · ${durationLabel}` : ''}
-              </span>
-            </div>
-            <audio controls preload="metadata" src={recordingStreamUrl(rec.id)} className="recordings-player" />
-          </li>
-          );
-        })}
-      </ul>
+      {!loading && !error && recordings.length > 0 && (
+        <ul className="recordings-list">
+          {recordings.map((rec) => {
+            const durationLabel = formatDuration(rec.durationSeconds);
+            const title = displayTitle(rec.filename);
+            return (
+              <li key={rec.id} className="recordings-card">
+                <div className="recordings-card-head">
+                  <span
+                    className={`recordings-badge recordings-badge--${rec.direction}`}
+                  >
+                    {rec.direction === 'incoming' ? 'Incoming' : 'Outgoing'}
+                  </span>
+                  {durationLabel && (
+                    <span className="recordings-duration">{durationLabel}</span>
+                  )}
+                </div>
+                <p className="recordings-card-title">{title}</p>
+                <p className="recordings-card-meta">
+                  {formatWhen(rec.createdAt)} · {formatBytes(rec.sizeBytes)}
+                </p>
+                <audio
+                  controls
+                  preload="metadata"
+                  src={recordingStreamUrl(rec.id)}
+                  className="recordings-player"
+                />
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </main>
   );
 }

@@ -1,70 +1,116 @@
-.card-outbound-active {
-  border-color: #34d399;
-  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.2);
+.outbound-call-card {
+  padding: 1.75rem 1.5rem;
+  border-radius: 16px;
+  background: linear-gradient(165deg, #141c38 0%, #0c1020 100%);
+  border: 1px solid #34d399;
+  box-shadow:
+    0 0 0 1px rgba(52, 211, 153, 0.2),
+    0 16px 40px rgba(0, 0, 0, 0.35);
+  text-align: center;
 }
 
-.card-outbound-active h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: #8b9cf7;
+.outbound-call-card--connecting {
+  border-color: #fbbf24;
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, 0.25),
+    0 16px 40px rgba(0, 0, 0, 0.35);
+  animation: outbound-connect-pulse 1.6s ease-in-out infinite;
 }
 
-.outbound-active-number {
-  margin: 0 0 0.75rem;
-  font-size: 1.35rem;
+.outbound-call-card--hold {
+  border-color: #f59e0b;
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.3),
+    0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes outbound-connect-pulse {
+  0%,
+  100% {
+    border-color: #fbbf24;
+  }
+  50% {
+    border-color: #fcd34d;
+  }
+}
+
+.outbound-call-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6ee7b7;
+}
+
+.outbound-call-number {
+  margin: 0 0 1rem;
+  font-size: 1.65rem;
   font-weight: 700;
   color: #f2f5ff;
+  word-break: break-word;
 }
 
-.outbound-active-status {
-  margin: 0 0 0.5rem;
+.outbound-call-status {
+  margin: 0 0 0.35rem;
   font-size: 0.95rem;
-  color: #c6d0f5;
+  color: #a8b4e0;
 }
 
-.outbound-active-status--connecting {
+.outbound-call-status--connecting {
   color: #fbbf24;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
 }
 
-.outbound-active-status--hold {
+.outbound-call-status--hold {
   color: #fbbf24;
   font-weight: 600;
 }
 
-.outbound-active-timer {
+.outbound-call-timer {
+  margin: 0 0 1.25rem;
+  font-size: 1.25rem;
   font-weight: 700;
+  letter-spacing: 0.04em;
   color: #34d399;
 }
 
-.outbound-active-hold-timer {
-  margin: 0 0 0.5rem;
-  font-size: 1.1rem;
-  font-weight: 700;
+.outbound-call-timer--hold {
   color: #fbbf24;
 }
 
-.outbound-active-hold-hint {
-  margin: 0 0 1rem;
+.outbound-call-hint {
+  margin: -0.5rem 0 1.25rem;
   font-size: 0.8rem;
+  line-height: 1.45;
   color: #8b9cf7;
-  line-height: 1.4;
 }
 
-.outbound-active-actions {
+.outbound-call-actions {
   display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.outbound-active-actions button {
-  flex: 1;
-  min-width: 6rem;
-  padding: 0.65rem 1rem;
+.outbound-call-actions button {
+  width: 100%;
+  padding: 0.75rem 1rem;
   border: none;
-  border-radius: 8px;
-  font-size: 0.95rem;
+  border-radius: 10px;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.outbound-call-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.outbound-call-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-outbound-hold {
@@ -72,17 +118,9 @@
   color: #0a1124;
 }
 
-.btn-outbound-hold:hover:not(:disabled) {
-  background: #d97706;
-}
-
 .btn-outbound-resume {
   background: #34d399;
   color: #0a1124;
-}
-
-.btn-outbound-resume:hover {
-  background: #2bb888;
 }
 
 .btn-outbound-hangup {
@@ -90,6 +128,6 @@
   color: #fff;
 }
 
-.btn-outbound-hangup:hover {
+.btn-outbound-hangup:hover:not(:disabled) {
   background: #ef4444;
 }
