@@ -88,10 +88,9 @@ export function RecordingsPage({ onBack }: RecordingsPageProps) {
     <main className="recordings-page">
       <header className="recordings-header">
         <button type="button" className="recordings-btn-back" onClick={onBack}>
-          ← Back to console
+          ← Back
         </button>
-        <h1 className="recordings-title">Call recordings</h1>
-        <p className="recordings-subtitle">Listen to saved incoming and outgoing calls</p>
+        <h1 className="recordings-title">Recordings</h1>
       </header>
 
       <div className="recordings-toolbar">
@@ -114,56 +113,57 @@ export function RecordingsPage({ onBack }: RecordingsPageProps) {
         </button>
       </div>
 
-      {loading && (
-        <div className="recordings-state recordings-state--loading">
-          <span className="recordings-spinner" aria-hidden />
-          Loading recordings…
-        </div>
-      )}
-      {error && (
-        <div className="recordings-state recordings-state--error" role="alert">
-          {error}
-        </div>
-      )}
-      {!loading && !error && recordings.length === 0 && (
-        <div className="recordings-state recordings-state--empty">
-          <p>No recordings yet</p>
-          <span>Calls are saved automatically when answered.</span>
-        </div>
-      )}
+      <div className="recordings-scroll">
+        {loading && (
+          <div className="recordings-state recordings-state--loading">
+            <span className="recordings-spinner" aria-hidden />
+            Loading…
+          </div>
+        )}
+        {error && (
+          <div className="recordings-state recordings-state--error" role="alert">
+            {error}
+          </div>
+        )}
+        {!loading && !error && recordings.length === 0 && (
+          <div className="recordings-state recordings-state--empty">
+            <p>No recordings yet</p>
+          </div>
+        )}
 
-      {!loading && !error && recordings.length > 0 && (
-        <ul className="recordings-list">
-          {recordings.map((rec) => {
-            const durationLabel = formatDuration(rec.durationSeconds);
-            const title = displayTitle(rec.filename);
-            return (
-              <li key={rec.id} className="recordings-card">
-                <div className="recordings-card-head">
-                  <span
-                    className={`recordings-badge recordings-badge--${rec.direction}`}
-                  >
-                    {rec.direction === 'incoming' ? 'Incoming' : 'Outgoing'}
-                  </span>
-                  {durationLabel && (
-                    <span className="recordings-duration">{durationLabel}</span>
-                  )}
-                </div>
-                <p className="recordings-card-title">{title}</p>
-                <p className="recordings-card-meta">
-                  {formatWhen(rec.createdAt)} · {formatBytes(rec.sizeBytes)}
-                </p>
-                <audio
-                  controls
-                  preload="metadata"
-                  src={recordingStreamUrl(rec.id)}
-                  className="recordings-player"
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+        {!loading && !error && recordings.length > 0 && (
+          <ul className="recordings-list">
+            {recordings.map((rec) => {
+              const durationLabel = formatDuration(rec.durationSeconds);
+              const title = displayTitle(rec.filename);
+              return (
+                <li key={rec.id} className="recordings-card">
+                  <div className="recordings-card-head">
+                    <span
+                      className={`recordings-badge recordings-badge--${rec.direction}`}
+                    >
+                      {rec.direction === 'incoming' ? 'In' : 'Out'}
+                    </span>
+                    {durationLabel && (
+                      <span className="recordings-duration">{durationLabel}</span>
+                    )}
+                  </div>
+                  <p className="recordings-card-title">{title}</p>
+                  <p className="recordings-card-meta">
+                    {formatWhen(rec.createdAt)} · {formatBytes(rec.sizeBytes)}
+                  </p>
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={recordingStreamUrl(rec.id)}
+                    className="recordings-player"
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </main>
   );
 }

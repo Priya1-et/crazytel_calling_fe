@@ -1287,20 +1287,22 @@ function App() {
 
   if (appView === 'recordings') {
     return (
-      <>
+      <div className="app-shell">
         <RecordingsPage onBack={() => setAppView('call')} />
         {incomingCallOverlay}
         <audio ref={remoteAudioRef} autoPlay />
-      </>
+      </div>
     );
   }
 
   return (
+    <div className="app-shell">
     <main className="app">
+      <div className="app-console-panel">
       <div className="app-top-row">
         <h1>{UI_TITLE}</h1>
         <button type="button" className="btn-view-recordings" onClick={() => setAppView('recordings')}>
-          View call recordings
+          Recordings
         </button>
       </div>
 
@@ -1415,11 +1417,13 @@ function App() {
         onYes={() => void executeOutboundDial(true)}
         onNo={() => void executeOutboundDial(false)}
       />
+      </div>
 
       {incomingCallOverlay}
 
       <audio ref={remoteAudioRef} autoPlay />
     </main>
+    </div>
   );
 }
 

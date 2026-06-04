@@ -4,6 +4,17 @@
   padding: 10px 12px;
   background: rgba(127, 29, 29, 0.35);
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.missed-calls-panel::-webkit-scrollbar {
+  width: 5px;
+}
+
+.missed-calls-panel::-webkit-scrollbar-thumb {
+  background: #7f1d1d;
+  border-radius: 4px;
 }
 
 .missed-calls-title {

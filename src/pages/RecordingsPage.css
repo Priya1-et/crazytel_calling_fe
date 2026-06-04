@@ -1,28 +1,39 @@
 .recordings-page {
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 24px 20px 40px;
-  min-height: 100vh;
+  max-width: 380px;
+  width: 100%;
+  height: min(480px, calc(100svh - 24px));
+  max-height: calc(100svh - 24px);
+  margin: 0;
+  padding: 12px;
   box-sizing: border-box;
-  background: #080c18;
+  background: #0c1020;
+  border: 1px solid #2c355b;
+  border-radius: 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .recordings-header {
-  margin-bottom: 1.5rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .recordings-btn-back {
-  padding: 0.45rem 0.85rem;
+  padding: 0.35rem 0.65rem;
   border: 1px solid #41507f;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: #8b9cf7;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease;
 }
 
 .recordings-btn-back:hover {
@@ -30,51 +41,38 @@
 }
 
 .recordings-title {
-  margin: 1rem 0 0.35rem;
-  font-size: 1.5rem;
+  margin: 0;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #f2f5ff;
-  letter-spacing: -0.02em;
-}
-
-.recordings-subtitle {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #8b9cf7;
 }
 
 .recordings-toolbar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 1.25rem;
+  gap: 8px;
 }
 
 .recordings-filters {
   display: flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 10px;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
   background: #0f162b;
   border: 1px solid #2c355b;
 }
 
 .recordings-filter-pill {
-  padding: 0.4rem 0.85rem;
+  padding: 0.3rem 0.6rem;
   border: none;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: #8b9cf7;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.recordings-filter-pill:hover {
-  color: #c6d0f5;
 }
 
 .recordings-filter-pill--active {
@@ -83,35 +81,56 @@
 }
 
 .recordings-btn-refresh {
-  padding: 0.45rem 0.9rem;
+  padding: 0.35rem 0.65rem;
   border: 1px solid #34d399;
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(52, 211, 153, 0.1);
   color: #6ee7b7;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
 }
 
-.recordings-btn-refresh:hover {
-  background: rgba(52, 211, 153, 0.2);
+.recordings-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.recordings-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.recordings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.recordings-scroll::-webkit-scrollbar-thumb {
+  background: #2c355b;
+  border-radius: 4px;
+}
+
+.recordings-scroll::-webkit-scrollbar-thumb:hover {
+  background: #41507f;
 }
 
 .recordings-state {
-  padding: 2rem 1.25rem;
-  border-radius: 12px;
+  padding: 1.25rem 0.75rem;
+  border-radius: 10px;
   border: 1px dashed #2c355b;
   background: #0f162b;
   text-align: center;
   color: #8b9cf7;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
 }
 
 .recordings-state--loading {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .recordings-state--error {
@@ -121,20 +140,14 @@
 }
 
 .recordings-state--empty p {
-  margin: 0 0 0.35rem;
-  font-size: 1.05rem;
-  font-weight: 600;
+  margin: 0;
+  font-size: 0.9rem;
   color: #c6d0f5;
 }
 
-.recordings-state--empty span {
-  font-size: 0.85rem;
-  color: #8b9cf7;
-}
-
 .recordings-spinner {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border: 2px solid #2c355b;
   border-top-color: #34d399;
   border-radius: 50%;
@@ -153,30 +166,29 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .recordings-card {
-  padding: 1rem 1.1rem 1.1rem;
-  border-radius: 14px;
-  background: linear-gradient(165deg, #141c38 0%, #0f162b 100%);
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  background: #0f162b;
   border: 1px solid #2c355b;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .recordings-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 0.5rem;
+  gap: 6px;
+  margin-bottom: 0.35rem;
 }
 
 .recordings-badge {
   display: inline-block;
-  padding: 0.2rem 0.55rem;
-  border-radius: 6px;
-  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -185,41 +197,34 @@
 .recordings-badge--incoming {
   background: rgba(78, 108, 243, 0.25);
   color: #a5b4fc;
-  border: 1px solid rgba(78, 108, 243, 0.4);
 }
 
 .recordings-badge--outgoing {
   background: rgba(52, 211, 153, 0.15);
   color: #6ee7b7;
-  border: 1px solid rgba(52, 211, 153, 0.35);
 }
 
 .recordings-duration {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: #34d399;
-  font-variant-numeric: tabular-nums;
 }
 
 .recordings-card-title {
-  margin: 0 0 0.25rem;
-  font-size: 1.15rem;
+  margin: 0 0 0.15rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #f2f5ff;
 }
 
 .recordings-card-meta {
-  margin: 0 0 0.85rem;
-  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
   color: #8b9cf7;
 }
 
 .recordings-player {
   width: 100%;
-  height: 40px;
-  border-radius: 8px;
-}
-
-.recordings-player::-webkit-media-controls-panel {
-  background: #0a1124;
+  height: 32px;
+  border-radius: 6px;
 }

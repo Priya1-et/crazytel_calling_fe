@@ -1,16 +1,27 @@
-.app {
-  max-width: 400px;
+/* Full-page dark bg; console sits compact at top (no tall stretched panel) */
+.app-shell {
   width: 100%;
-  margin: 0 auto;
-  padding: 16px 16px 24px;
+  min-height: 100svh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12px 12px 20px;
+  box-sizing: border-box;
+  background: #050810;
+}
+
+.app {
+  max-width: 380px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   text-align: left;
-  background: #080c18;
-  min-height: 100vh;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .app h1 {
@@ -101,8 +112,18 @@
 .card {
   border: 1px solid #2c355b;
   border-radius: 12px;
-  padding: 14px;
+  padding: 12px;
   background: #0f162b;
+}
+
+.app-console-panel {
+  border: 1px solid #2c355b;
+  border-radius: 14px;
+  padding: 12px;
+  background: #0c1020;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .card h2 {
@@ -111,6 +132,10 @@
   font-weight: 600;
   color: #c6d0f5;
   letter-spacing: 0.02em;
+}
+
+.card-dial {
+  margin: 0;
 }
 
 .card-dial .actions .btn-hangup--secondary:not(:disabled) {
